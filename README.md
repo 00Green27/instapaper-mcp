@@ -151,6 +151,47 @@ If you feel something is missing, ask:
 
 ---
 
+## How to Run
+
+### 1. Configuration
+Set your Instapaper API credentials in `src/InstapaperMcp.Api/appsettings.json` or as environment variables:
+- `Instapaper__ConsumerKey`
+- `Instapaper__ConsumerSecret`
+- `Instapaper__AccessToken`
+- `Instapaper__AccessTokenSecret`
+
+### 2. Build
+```bash
+dotnet build
+```
+
+### 3. Run
+The server communicates via `stdin` and `stdout` using JSON-RPC.
+```bash
+dotnet run --project src/InstapaperMcp.Api
+```
+
+### 4. Integration with Claude Desktop
+Add the following to your `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "instapaper": {
+      "command": "dotnet",
+      "args": ["run", "--project", "D:/Dev/personal/instapaper-mcp/src/InstapaperMcp.Api", "--no-build"],
+      "env": {
+        "Instapaper__ConsumerKey": "...",
+        "Instapaper__ConsumerSecret": "...",
+        "Instapaper__AccessToken": "...",
+        "Instapaper__AccessTokenSecret": "..."
+      }
+    }
+  }
+}
+```
+
+---
+
 ## Status
 This project is evolving.
 Expect iteration, tightening of rules, and removal of features that add noise.
