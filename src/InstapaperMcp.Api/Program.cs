@@ -6,72 +6,80 @@ using InstapaperMcp.Infrastructure.Configuration;
 using InstapaperMcp.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace InstapaperMcp.Api;
 
-internal class Program
+internal static class Program
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     static async Task Main(string[] args)
     {
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
+        var builder = Host.CreateApplicationBuilder(args);
 
-        var services = new ServiceCollection();
-
-        services.AddLogging(builder =>
+        // Logging refined for MCP
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole(options =>
         {
-            builder.AddConfiguration(configuration.GetSection("Logging"));
-            // Redirect console logging to stderr to not interfere with MCP (JSON-RPC on stdout)
-            builder.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+            // MCP servers must log to stderr to avoid polluting JSON-RPC on stdout
+            options.LogToStandardErrorThreshold = LogLevel.Trace;
         });
 
-        services.Configure<InstapaperOptions>(configuration.GetSection(InstapaperOptions.SectionName));
-        services.AddHttpClient<IInstapaperService, InstapaperService>();
-        services.AddScoped<McpHandler>();
+        // Configuration
+        builder.Services.Configure<InstapaperOptions>(
+            builder.Configuration.GetSection(InstapaperOptions.SectionName));
 
-        var serviceProvider = services.BuildServiceProvider();
-        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        // Core Services
+        builder.Services.AddHttpClient<IInstapaperService, InstapaperService>();
+        builder.Services.AddScoped<McpHandler>();
 
-        logger.LogInformation("Instapaper MCP Server starting...");
+        using var host = builder.Build();
 
-        var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var logger = host.Services.GetRequiredService<ILogger<McpHandler>>();
+        logger.LogInformation("Instapaper MCP Server started.");
 
-        while (true)
+        using var reader = new StreamReader(Console.OpenStandardInput());
+
+        while (await reader.ReadLineAsync() is { } line)
         {
-            var line = await Console.In.ReadLineAsync();
-            if (line == null) break;
+            if (string.IsNullOrWhiteSpace(line)) continue;
 
             try
             {
-                var request = JsonSerializer.Deserialize<McpRequest>(line, jsonOptions);
+                var request = JsonSerializer.Deserialize<McpRequest>(line, JsonOptions);
                 if (request == null) continue;
 
-                using var scope = serviceProvider.CreateScope();
+                using var scope = host.Services.CreateScope();
                 var handler = scope.ServiceProvider.GetRequiredService<McpHandler>();
 
                 McpResponse response;
                 try
                 {
-                    var result = await handler.HandleAsync(request.Method, (JsonElement?)request.Params, CancellationToken.None);
+                    var result = await handler.HandleAsync(
+                        request.Method,
+                        (JsonElement?)request.Params,
+                        CancellationToken.None);
+
                     response = new McpResponse("2.0", request.Id, result, null);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Error handling method {Method}", request.Method);
+                    logger.LogError(ex, "Error handling method '{Method}'", request.Method);
                     response = new McpResponse("2.0", request.Id, null, new McpError(-32603, ex.Message, null));
                 }
 
-                var jsonResponse = JsonSerializer.Serialize(response, jsonOptions);
+                var jsonResponse = JsonSerializer.Serialize(response, JsonOptions);
                 await Console.Out.WriteLineAsync(jsonResponse);
                 await Console.Out.FlushAsync();
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Fatal error in request processing loop");
+                logger.LogError(ex, "Fatal error processing request line.");
             }
         }
     }

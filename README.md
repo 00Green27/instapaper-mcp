@@ -154,7 +154,18 @@ If you feel something is missing, ask:
 ## How to Run
 
 ### 1. Configuration
-Set your Instapaper API credentials in `src/InstapaperMcp.Api/appsettings.json` or as environment variables:
+Set your Instapaper API credentials using **User Secrets** (recommended for dev) or Environment Variables:
+
+#### Using User Secrets (Safe for local dev):
+```bash
+cd src/InstapaperMcp.Api
+dotnet user-secrets set "Instapaper:ConsumerKey" "your_key"
+dotnet user-secrets set "Instapaper:ConsumerSecret" "your_secret"
+dotnet user-secrets set "Instapaper:AccessToken" "your_token"
+dotnet user-secrets set "Instapaper:AccessTokenSecret" "your_token_secret"
+```
+
+#### Using Environment Variables:
 - `Instapaper__ConsumerKey`
 - `Instapaper__ConsumerSecret`
 - `Instapaper__AccessToken`

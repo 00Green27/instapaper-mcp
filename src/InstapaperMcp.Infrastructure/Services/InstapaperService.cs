@@ -10,62 +10,60 @@ using Microsoft.Extensions.Options;
 
 namespace InstapaperMcp.Infrastructure.Services;
 
-public sealed class InstapaperService : IInstapaperService
+public sealed class InstapaperService(
+    HttpClient httpClient,
+    IOptions<InstapaperOptions> options,
+    ILogger<InstapaperService> logger) : IInstapaperService
 {
-    private readonly HttpClient _httpClient;
-    private readonly InstapaperOptions _options;
-    private readonly ILogger<InstapaperService> _logger;
+    private readonly InstapaperOptions _options = options.Value;
 
-    public InstapaperService(
-        HttpClient httpClient,
-        IOptions<InstapaperOptions> options,
-        ILogger<InstapaperService> logger)
+    private async Task<HttpResponseMessage> SendRequestAsync(
+        HttpMethod method,
+        string endpoint,
+        Dictionary<string, string>? parameters = null,
+        CancellationToken ct = default)
     {
-        _httpClient = httpClient;
-        _options = options.Value;
-        _logger = logger;
-        _httpClient.BaseAddress = new Uri("https://www.instapaper.com/api/1/");
+        var url = $"https://www.instapaper.com/api/1/{endpoint}";
+        var authHeader = OAuthHelper.CreateAuthorizationHeader(
+            method.Method, url, _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret, parameters);
+
+        var request = new HttpRequestMessage(method, endpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader[6..]);
+
+        if (parameters is { Count: > 0 })
+        {
+            request.Content = new FormUrlEncodedContent(parameters);
+        }
+
+        return await httpClient.SendAsync(request, ct);
     }
 
     public async Task<Result<IReadOnlyList<Bookmark>>> SearchBookmarksAsync(long? folderId, string? query, int limit, CancellationToken ct)
     {
-        const string url = "https://www.instapaper.com/api/1/bookmarks/list";
         var parameters = new Dictionary<string, string>();
         if (folderId.HasValue) parameters.Add("folder_id", folderId.Value.ToString());
         if (limit > 0) parameters.Add("limit", limit.ToString());
 
-        var authHeader = OAuthHelper.CreateAuthorizationHeader(
-            "POST", url, _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret, parameters);
-
-        var request = new HttpRequestMessage(HttpMethod.Post, "bookmarks/list");
-        request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader.Substring(6));
-        request.Content = new FormUrlEncodedContent(parameters);
-
-        var response = await _httpClient.SendAsync(request, ct);
+        var response = await SendRequestAsync(HttpMethod.Post, "bookmarks/list", parameters, ct);
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync(ct);
             return Result<IReadOnlyList<Bookmark>>.Failure($"Instapaper API error: {response.StatusCode} - {error}");
         }
 
-        // Parsing logic for Instapaper's bookmarks/list which returns bookmarks array
         var content = await response.Content.ReadAsStringAsync(ct);
-        _logger.LogTrace("Search Response: {Content}", content);
+        logger.LogTrace("Search Response: {Content}", content);
 
-        // Note: Instapaper returns a mixed array of user, optional folder, and bookmarks.
-        // Simplified parsing for now.
-        return Result<IReadOnlyList<Bookmark>>.Success(new List<Bookmark>());
+        return Result<IReadOnlyList<Bookmark>>.Success([]);
     }
 
-    public async Task<Result<IReadOnlyList<Bookmark>>> GetArticlesContentAsync(IReadOnlyList<long> bookmarkIds, CancellationToken ct)
+    public Task<Result<IReadOnlyList<Bookmark>>> GetArticlesContentAsync(IReadOnlyList<long> bookmarkIds, CancellationToken ct)
     {
-        // Instapaper doesn't have a bulk content tool, we need to fetch individually or use a different endpoint
-        return Result<IReadOnlyList<Bookmark>>.Failure("Bulk content fetching not yet implemented");
+        return Task.FromResult(Result<IReadOnlyList<Bookmark>>.Failure("Bulk content fetching not yet implemented"));
     }
 
     public async Task<Result<Bookmark>> AddBookmarkAsync(string? url, string? content, string? title, string? description, long? folderId, CancellationToken ct)
     {
-        const string apiUrl = "https://www.instapaper.com/api/1/bookmarks/add";
         var parameters = new Dictionary<string, string>();
         if (!string.IsNullOrEmpty(url)) parameters.Add("url", url);
         if (!string.IsNullOrEmpty(content)) parameters.Add("text", content);
@@ -73,14 +71,7 @@ public sealed class InstapaperService : IInstapaperService
         if (!string.IsNullOrEmpty(description)) parameters.Add("description", description);
         if (folderId.HasValue) parameters.Add("folder_id", folderId.Value.ToString());
 
-        var authHeader = OAuthHelper.CreateAuthorizationHeader(
-            "POST", apiUrl, _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret, parameters);
-
-        var request = new HttpRequestMessage(HttpMethod.Post, "bookmarks/add");
-        request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader.Substring(6));
-        request.Content = new FormUrlEncodedContent(parameters);
-
-        var response = await _httpClient.SendAsync(request, ct);
+        var response = await SendRequestAsync(HttpMethod.Post, "bookmarks/add", parameters, ct);
         if (!response.IsSuccessStatusCode)
             return Result<Bookmark>.Failure($"Error adding bookmark: {response.StatusCode}");
 
@@ -89,27 +80,20 @@ public sealed class InstapaperService : IInstapaperService
 
     public async Task<Result> ManageBookmarksAsync(IReadOnlyList<long> bookmarkIds, BookmarkAction action, CancellationToken ct)
     {
+        var endpoint = action switch
+        {
+            BookmarkAction.Archive => "bookmarks/archive",
+            BookmarkAction.Unarchive => "bookmarks/unarchive",
+            BookmarkAction.Delete => "bookmarks/delete",
+            BookmarkAction.Star => "bookmarks/star",
+            BookmarkAction.Unstar => "bookmarks/unstar",
+            _ => throw new ArgumentOutOfRangeException(nameof(action))
+        };
+
         foreach (var id in bookmarkIds)
         {
-            var endpoint = action switch
-            {
-                BookmarkAction.Archive => "bookmarks/archive",
-                BookmarkAction.Unarchive => "bookmarks/unarchive",
-                BookmarkAction.Delete => "bookmarks/delete",
-                BookmarkAction.Star => "bookmarks/star",
-                BookmarkAction.Unstar => "bookmarks/unstar",
-                _ => throw new ArgumentOutOfRangeException(nameof(action))
-            };
-
             var parameters = new Dictionary<string, string> { { "bookmark_id", id.ToString() } };
-            var authHeader = OAuthHelper.CreateAuthorizationHeader(
-                "POST", $"https://www.instapaper.com/api/1/{endpoint}", _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret, parameters);
-
-            var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-            request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader.Substring(6));
-            request.Content = new FormUrlEncodedContent(parameters);
-
-            await _httpClient.SendAsync(request, ct);
+            await SendRequestAsync(HttpMethod.Post, endpoint, parameters, ct);
         }
 
         return Result.Success();
@@ -124,73 +108,43 @@ public sealed class InstapaperService : IInstapaperService
                 { "bookmark_id", id.ToString() },
                 { "folder_id", folderId.ToString() }
             };
-            var authHeader = OAuthHelper.CreateAuthorizationHeader(
-                "POST", "https://www.instapaper.com/api/1/bookmarks/move", _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret, parameters);
-
-            var request = new HttpRequestMessage(HttpMethod.Post, "bookmarks/move");
-            request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader.Substring(6));
-            request.Content = new FormUrlEncodedContent(parameters);
-
-            await _httpClient.SendAsync(request, ct);
+            await SendRequestAsync(HttpMethod.Post, "bookmarks/move", parameters, ct);
         }
         return Result.Success();
     }
 
     public async Task<Result<IReadOnlyList<Folder>>> ListFoldersAsync(CancellationToken ct)
     {
-        const string url = "https://www.instapaper.com/api/1/folders/list";
-        var authHeader = OAuthHelper.CreateAuthorizationHeader(
-            "POST", url, _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret);
-
-        var request = new HttpRequestMessage(HttpMethod.Post, "folders/list");
-        request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader.Substring(6));
-
-        var response = await _httpClient.SendAsync(request, ct);
-        // Minimal response parsing
-        return Result<IReadOnlyList<Folder>>.Success(new List<Folder>());
+        var response = await SendRequestAsync(HttpMethod.Post, "folders/list", null, ct);
+        return Result<IReadOnlyList<Folder>>.Success([]);
     }
 
     public async Task<Result<Folder>> CreateFolderAsync(string title, CancellationToken ct)
     {
         var parameters = new Dictionary<string, string> { { "title", title } };
-        var authHeader = OAuthHelper.CreateAuthorizationHeader(
-            "POST", "https://www.instapaper.com/api/1/folders/add", _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret, parameters);
-
-        var request = new HttpRequestMessage(HttpMethod.Post, "folders/add");
-        request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader.Substring(6));
-        request.Content = new FormUrlEncodedContent(parameters);
-
-        var response = await _httpClient.SendAsync(request, ct);
+        await SendRequestAsync(HttpMethod.Post, "folders/add", parameters, ct);
         return Result<Folder>.Success(new Folder(0, title, 0, ""));
     }
 
     public async Task<Result> DeleteFolderAsync(long folderId, CancellationToken ct)
     {
         var parameters = new Dictionary<string, string> { { "folder_id", folderId.ToString() } };
-        var authHeader = OAuthHelper.CreateAuthorizationHeader(
-            "POST", "https://www.instapaper.com/api/1/folders/delete", _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret, parameters);
-
-        var request = new HttpRequestMessage(HttpMethod.Post, "folders/delete");
-        request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader.Substring(6));
-        request.Content = new FormUrlEncodedContent(parameters);
-
-        await _httpClient.SendAsync(request, ct);
+        await SendRequestAsync(HttpMethod.Post, "folders/delete", parameters, ct);
         return Result.Success();
     }
 
-    public async Task<Result<IReadOnlyList<Highlight>>> ListHighlightsAsync(long bookmarkId, CancellationToken ct)
+    public Task<Result<IReadOnlyList<Highlight>>> ListHighlightsAsync(long bookmarkId, CancellationToken ct)
     {
-        // API endpoint for highlights
-        return Result<IReadOnlyList<Highlight>>.Success(new List<Highlight>());
+        return Task.FromResult(Result<IReadOnlyList<Highlight>>.Success([]));
     }
 
-    public async Task<Result<Highlight>> AddHighlightAsync(long bookmarkId, string text, string? note, CancellationToken ct)
+    public Task<Result<Highlight>> AddHighlightAsync(long bookmarkId, string text, string? note, CancellationToken ct)
     {
-        return Result<Highlight>.Failure("Not implemented");
+        return Task.FromResult(Result<Highlight>.Failure("Not implemented"));
     }
 
-    public async Task<Result> DeleteHighlightAsync(long highlightId, CancellationToken ct)
+    public Task<Result> DeleteHighlightAsync(long highlightId, CancellationToken ct)
     {
-        return Result.Success();
+        return Task.FromResult(Result.Success());
     }
 }
