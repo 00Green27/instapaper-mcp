@@ -11,13 +11,30 @@ public sealed class McpHandler(
     {
         return method switch
         {
-            "listTools" => ListTools(),
-            "callTool" => await CallToolAsync(parameters, ct),
-            "listResources" => ListResources(),
-            "readResource" => await ReadResourceAsync(parameters, ct),
+            "initialize" => Initialize(),
+            "tools/list" => ListTools(),
+            "tools/call" => await CallToolAsync(parameters, ct),
+            "resources/list" => ListResources(),
+            "resources/read" => await ReadResourceAsync(parameters, ct),
+            "notifications/initialized" => null,
             _ => throw new NotSupportedException($"Method '{method}' is not supported.")
         };
     }
+
+    private static object Initialize() => new
+    {
+        protocolVersion = "2024-11-05",
+        capabilities = new
+        {
+            tools = new { listChanged = true },
+            resources = new { listChanged = true }
+        },
+        serverInfo = new
+        {
+            name = "instapaper-mcp",
+            version = "1.0.0"
+        }
+    };
 
     private static object ListTools() => new
     {

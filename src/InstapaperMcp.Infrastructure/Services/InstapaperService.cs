@@ -104,15 +104,51 @@ public sealed class InstapaperService(
         }
 
         var content = await response.Content.ReadAsStringAsync(ct);
-        logger.LogTrace("Search Response: {Content}", content);
+        using var doc = JsonDocument.Parse(content);
+        var bookmarks = new List<Bookmark>();
 
-        return Result<IReadOnlyList<Bookmark>>.Success([]);
+        foreach (var element in doc.RootElement.EnumerateArray())
+        {
+            if (element.GetProperty("type").GetString() != "bookmark") continue;
+
+            bookmarks.Add(new Bookmark(
+                Id: element.GetProperty("bookmark_id").GetInt64(),
+                Url: element.GetProperty("url").GetString() ?? "",
+                Title: element.GetProperty("title").GetString() ?? "",
+                Description: element.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
+                Content: "", // Content is not returned in list
+                FolderId: element.TryGetProperty("folder_id", out var fid) && fid.ValueKind == JsonValueKind.Number
+                    ? fid.GetInt64()
+                    : 0,
+                IsStarred: element.GetProperty("starred").GetString() == "1",
+                UpdatedAt: DateTimeOffset.FromUnixTimeSeconds(element.GetProperty("time").GetInt64()).DateTime
+            ));
+        }
+
+        return Result<IReadOnlyList<Bookmark>>.Success(bookmarks);
     }
 
-    public Task<Result<IReadOnlyList<Bookmark>>> GetArticlesContentAsync(IReadOnlyList<long> bookmarkIds,
+    public async Task<Result<IReadOnlyList<Bookmark>>> GetArticlesContentAsync(IReadOnlyList<long> bookmarkIds,
         CancellationToken ct)
     {
-        return Task.FromResult(Result<IReadOnlyList<Bookmark>>.Failure("Bulk content fetching not yet implemented"));
+        var bookmarks = new List<Bookmark>();
+        foreach (var id in bookmarkIds)
+        {
+            var parameters = new Dictionary<string, string> { { "bookmark_id", id.ToString() } };
+            var response = await SendRequestAsync(HttpMethod.Post, "bookmarks/get_text", parameters, ct);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var text = await response.Content.ReadAsStringAsync(ct);
+                bookmarks.Add(new Bookmark(id, "", "", "", text, 0, false, DateTime.UtcNow));
+            }
+            else
+            {
+                logger.LogWarning("Failed to fetch content for bookmark {Id}: {Status}", id, response.StatusCode);
+            }
+        }
+
+        return Result<IReadOnlyList<Bookmark>>.Success(bookmarks);
     }
 
     public async Task<Result<Bookmark>> AddBookmarkAsync(string? url, string? content, string? title,
@@ -127,10 +163,27 @@ public sealed class InstapaperService(
 
         var response = await SendRequestAsync(HttpMethod.Post, "bookmarks/add", parameters, ct);
         if (!response.IsSuccessStatusCode)
-            return Result<Bookmark>.Failure($"Error adding bookmark: {response.StatusCode}");
+        {
+            var error = await response.Content.ReadAsStringAsync(ct);
+            return Result<Bookmark>.Failure($"Error adding bookmark: {response.StatusCode} - {error}");
+        }
 
-        return Result<Bookmark>.Success(new Bookmark(0, url ?? "", title ?? "", description ?? "", content ?? "",
-            folderId ?? 0, false, DateTime.UtcNow));
+        var resContent = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(resContent);
+        var element = doc.RootElement.EnumerateArray().First(x => x.GetProperty("type").GetString() == "bookmark");
+
+        return Result<Bookmark>.Success(new Bookmark(
+            Id: element.GetProperty("bookmark_id").GetInt64(),
+            Url: element.GetProperty("url").GetString() ?? "",
+            Title: element.GetProperty("title").GetString() ?? "",
+            Description: element.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
+            Content: "", // Content not returned here
+            FolderId: element.TryGetProperty("folder_id", out var fid) && fid.ValueKind == JsonValueKind.Number
+                ? fid.GetInt64()
+                : 0,
+            IsStarred: element.GetProperty("starred").GetString() == "1",
+            UpdatedAt: DateTimeOffset.FromUnixTimeSeconds(element.GetProperty("time").GetInt64()).DateTime
+        ));
     }
 
     public async Task<Result> ManageBookmarksAsync(IReadOnlyList<long> bookmarkIds, BookmarkAction action,
@@ -173,14 +226,46 @@ public sealed class InstapaperService(
     public async Task<Result<IReadOnlyList<Folder>>> ListFoldersAsync(CancellationToken ct)
     {
         var response = await SendRequestAsync(HttpMethod.Post, "folders/list", null, ct);
-        return Result<IReadOnlyList<Folder>>.Success([]);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(ct);
+            return Result<IReadOnlyList<Folder>>.Failure($"Failed to list folders: {error}");
+        }
+
+        var content = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(content);
+        var folders = doc.RootElement.EnumerateArray()
+            .Select(element => new Folder(
+                Id: element.GetProperty("folder_id").GetInt64(),
+                Title: element.GetProperty("title").GetString() ?? "",
+                Position: element.GetProperty("position").GetInt32(),
+                Slug: element.GetProperty("slug").GetString() ?? ""
+            ))
+            .ToList();
+
+        return Result<IReadOnlyList<Folder>>.Success(folders);
     }
 
     public async Task<Result<Folder>> CreateFolderAsync(string title, CancellationToken ct)
     {
         var parameters = new Dictionary<string, string> { { "title", title } };
-        await SendRequestAsync(HttpMethod.Post, "folders/add", parameters, ct);
-        return Result<Folder>.Success(new Folder(0, title, 0, ""));
+        var response = await SendRequestAsync(HttpMethod.Post, "folders/add", parameters, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(ct);
+            return Result<Folder>.Failure($"Failed to create folder: {error}");
+        }
+
+        var content = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(content);
+        var element = doc.RootElement.EnumerateArray().First(x => x.GetProperty("type").GetString() == "folder");
+
+        return Result<Folder>.Success(new Folder(
+            Id: element.GetProperty("folder_id").GetInt64(),
+            Title: element.GetProperty("title").GetString() ?? "",
+            Position: element.GetProperty("position").GetInt32(),
+            Slug: element.GetProperty("slug").GetString() ?? ""
+        ));
     }
 
     public async Task<Result> DeleteFolderAsync(long folderId, CancellationToken ct)
@@ -190,14 +275,59 @@ public sealed class InstapaperService(
         return Result.Success();
     }
 
-    public Task<Result<IReadOnlyList<Highlight>>> ListHighlightsAsync(long bookmarkId, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<Highlight>>> ListHighlightsAsync(long bookmarkId, CancellationToken ct)
     {
-        return Task.FromResult(Result<IReadOnlyList<Highlight>>.Success([]));
+        var parameters = new Dictionary<string, string> { { "bookmark_id", bookmarkId.ToString() } };
+        var response = await SendRequestAsync(HttpMethod.Post, "bookmarks/get_highlights", parameters, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(ct);
+            return Result<IReadOnlyList<Highlight>>.Failure($"Failed to list highlights: {error}");
+        }
+
+        var content = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(content);
+        var highlights = doc.RootElement.EnumerateArray()
+            .Select(element => new Highlight(
+                Id: element.GetProperty("highlight_id").GetInt64(),
+                BookmarkId: element.GetProperty("bookmark_id").GetInt64(),
+                Text: element.GetProperty("text").GetString() ?? "",
+                Note: element.TryGetProperty("note", out var n) ? n.GetString() ?? "" : "",
+                CreatedAt: DateTimeOffset.FromUnixTimeSeconds(element.GetProperty("time").GetInt64()).DateTime
+            ))
+            .ToList();
+
+        return Result<IReadOnlyList<Highlight>>.Success(highlights);
     }
 
-    public Task<Result<Highlight>> AddHighlightAsync(long bookmarkId, string text, string? note, CancellationToken ct)
+    public async Task<Result<Highlight>> AddHighlightAsync(long bookmarkId, string text, string? note,
+        CancellationToken ct)
     {
-        return Task.FromResult(Result<Highlight>.Failure("Not implemented"));
+        var parameters = new Dictionary<string, string>
+        {
+            { "bookmark_id", bookmarkId.ToString() },
+            { "text", text }
+        };
+        if (!string.IsNullOrEmpty(note)) parameters.Add("note", note);
+
+        var response = await SendRequestAsync(HttpMethod.Post, "bookmarks/add_highlight", parameters, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(ct);
+            return Result<Highlight>.Failure($"Failed to add highlight: {error}");
+        }
+
+        var content = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(content);
+        var element = doc.RootElement.EnumerateArray().First(x => x.GetProperty("type").GetString() == "highlight");
+
+        return Result<Highlight>.Success(new Highlight(
+            Id: element.GetProperty("highlight_id").GetInt64(),
+            BookmarkId: element.GetProperty("bookmark_id").GetInt64(),
+            Text: element.GetProperty("text").GetString() ?? "",
+            Note: element.TryGetProperty("note", out var n) ? n.GetString() ?? "" : "",
+            CreatedAt: DateTimeOffset.FromUnixTimeSeconds(element.GetProperty("time").GetInt64()).DateTime
+        ));
     }
 
     public Task<Result> DeleteHighlightAsync(long highlightId, CancellationToken ct)
