@@ -21,12 +21,22 @@ public sealed class InstapaperService(
 
     private async Task EnsureAuthenticatedAsync(CancellationToken ct)
     {
+        if (string.IsNullOrEmpty(_options.ConsumerKey) || string.IsNullOrEmpty(_options.ConsumerSecret))
+        {
+            const string error =
+                "Instapaper ConsumerKey or ConsumerSecret is missing. Register your app at https://www.instapaper.com/main/developers to get them.";
+            logger.LogError(error);
+            throw new InvalidOperationException(error);
+        }
+
         if (!string.IsNullOrEmpty(_cachedToken ?? _options.AccessToken)) return;
 
         if (string.IsNullOrEmpty(_options.Username) || string.IsNullOrEmpty(_options.Password))
         {
-            logger.LogWarning("Authentication tokens are missing and no Username/Password provided for xAuth.");
-            return;
+            const string error =
+                "Authentication credentials missing. Please provide either AccessToken/AccessTokenSecret or Username/Password for xAuth, along with ConsumerKey/ConsumerSecret.";
+            logger.LogError(error);
+            throw new InvalidOperationException(error);
         }
 
         logger.LogInformation("Attempting xAuth for user {Username}", _options.Username);
@@ -95,9 +105,11 @@ public sealed class InstapaperService(
         var parameters = new Dictionary<string, string>();
         if (folderId.HasValue) parameters.Add("folder_id", folderId.Value.ToString());
 
-        // If we need to filter safely, we must fetch more items than requested.
+        // Enforce sensible defaults and caps to keep responses context-safe.
         // Instapaper max limit is 500.
-        var fetchLimit = string.IsNullOrWhiteSpace(query) ? limit : 500;
+        var defaultLimit = 10;
+        if (limit <= 0) limit = defaultLimit;
+        var fetchLimit = string.IsNullOrWhiteSpace(query) ? Math.Clamp(limit, 1, 100) : 500;
         if (fetchLimit > 0) parameters.Add("limit", fetchLimit.ToString());
 
         var response = await SendRequestAsync(HttpMethod.Post, "bookmarks/list", parameters, ct);

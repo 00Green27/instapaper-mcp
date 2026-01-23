@@ -54,4 +54,5 @@ TestResult.xml
 nunit-*.xml
 # Project specific
 dist/
+publish/
 /temp_agents_repo

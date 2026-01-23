@@ -12,11 +12,12 @@ public sealed class McpHandler(
         return method switch
         {
             "initialize" => Initialize(),
+            "notifications/initialized" => null,
+            "initialized" => null,
             "tools/list" => ListTools(),
             "tools/call" => await CallToolAsync(parameters, ct),
             "resources/list" => ListResources(),
             "resources/read" => await ReadResourceAsync(parameters, ct),
-            "notifications/initialized" => null,
             _ => throw new NotSupportedException($"Method '{method}' is not supported.")
         };
     }
@@ -38,20 +39,158 @@ public sealed class McpHandler(
 
     private static object ListTools() => new
     {
-        tools = new[]
+        tools = new object[]
         {
-            new { name = "search_bookmarks", description = "List or search bookmarks. Defaults to unread folder." },
-            new { name = "get_article_content", description = "Fetch text content for one or more bookmarks." },
-            new { name = "add_bookmark", description = "Add a new bookmark or note." },
+            new
+            {
+                name = "search_bookmarks",
+                description = "List or search bookmarks. Defaults to unread folder.",
+                inputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        folder_id = new { type = "integer", description = "Optional folder ID to search in." },
+                        query = new { type = "string", description = "Optional search query." },
+                        limit = new
+                        {
+                            type = "integer", description = "Maximum number of items to return (default 10).",
+                            minimum = 1,
+                            maximum = 100
+                        }
+                    }
+                }
+            },
+            new
+            {
+                name = "add_bookmark",
+                description = "Add a new bookmark or note.",
+                inputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        url = new { type = "string", description = "The URL of the bookmark or note." },
+                        content = new { type = "string", description = "Optional text content for a note." },
+                        title = new { type = "string", description = "Optional title." },
+                        description = new { type = "string", description = "Optional description." },
+                        folder_id = new { type = "integer", description = "Optional folder ID to add to." }
+                    },
+                    required = new[] { "url" }
+                }
+            },
             new
             {
                 name = "manage_bookmarks",
-                description =
-                    "Archive, unarchive, delete, star, or unstar bookmarks. Action is applied to all provided IDs."
+                description = "Archive, unarchive, delete, star, or unstar bookmarks.",
+                inputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        bookmark_ids = new
+                        {
+                            type = "array",
+                            items = new { type = "integer" },
+                            description = "List of bookmark IDs to manage."
+                        },
+                        action = new
+                        {
+                            type = "string",
+                            @enum = new[] { "archive", "unarchive", "delete", "star", "unstar" },
+                            description = "The action to perform."
+                        }
+                    },
+                    required = new[] { "bookmark_ids", "action" }
+                }
             },
-            new { name = "move_bookmarks", description = "Move bookmarks to a different folder." },
-            new { name = "manage_folders", description = "List, create, or delete folders." },
-            new { name = "manage_highlights", description = "List, add, or delete highlights." }
+            new
+            {
+                name = "move_bookmarks",
+                description = "Move bookmarks to a different folder.",
+                inputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        bookmark_ids = new
+                        {
+                            type = "array",
+                            items = new { type = "integer" },
+                            description = "List of bookmark IDs to move."
+                        },
+                        folder_id = new { type = "integer", description = "The target folder ID." }
+                    },
+                    required = new[] { "bookmark_ids", "folder_id" }
+                }
+            },
+            new
+            {
+                name = "manage_folders",
+                description = "List, create, or delete folders.",
+                inputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        action = new
+                        {
+                            type = "string",
+                            @enum = new[] { "list", "create", "delete" },
+                            description = "The action to perform."
+                        },
+                        title = new { type = "string", description = "The title of the folder (for create action)." },
+                        folder_id = new { type = "integer", description = "The folder ID (for delete action)." }
+                    },
+                    required = new[] { "action" }
+                }
+            },
+            new
+            {
+                name = "manage_highlights",
+                description = "List, add, or delete highlights.",
+                inputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        action = new
+                        {
+                            type = "string",
+                            @enum = new[] { "list", "add", "delete" },
+                            description = "The action to perform."
+                        },
+                        bookmark_id = new
+                            { type = "integer", description = "The bookmark ID (for list and add actions)." },
+                        text = new { type = "string", description = "The text of the highlight (for add action)." },
+                        note = new
+                        {
+                            type = "string", description = "Optional note for the highlight (for add action)."
+                        },
+                        highlight_id = new { type = "integer", description = "The highlight ID (for delete action)." }
+                    },
+                    required = new[] { "action" }
+                }
+            },
+            new
+            {
+                name = "get_article_content",
+                description = "Fetch text content for one or more bookmarks.",
+                inputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        bookmark_ids = new
+                        {
+                            type = "array",
+                            items = new { type = "integer" },
+                            description = "List of bookmark IDs to fetch content for."
+                        }
+                    },
+                    required = new[] { "bookmark_ids" }
+                }
+            }
         }
     };
 
@@ -70,8 +209,16 @@ public sealed class McpHandler(
             "move_bookmarks" => await MoveBookmarksAsync(args, ct),
             "manage_folders" => await ManageFoldersAsync(args, ct),
             "manage_highlights" => await ManageHighlightsAsync(args, ct),
+            "get_article_content" => await GetArticlesContentAsync(args, ct),
             _ => throw new NotSupportedException($"Tool '{name}' is not supported.")
         };
+    }
+
+    private async Task<object> GetArticlesContentAsync(JsonElement args, CancellationToken ct)
+    {
+        var ids = args.GetProperty("bookmark_ids").EnumerateArray().Select(x => x.GetInt64()).ToList();
+        var result = await instapaperService.GetArticlesContentAsync(ids, ct);
+        return FormatResult(result);
     }
 
     private async Task<object> SearchBookmarksAsync(JsonElement args, CancellationToken ct)

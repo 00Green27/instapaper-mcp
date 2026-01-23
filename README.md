@@ -193,25 +193,48 @@ dotnet build
 ```
 
 ### 3. Run
-The server communicates via `stdin` and `stdout` using JSON-RPC.
+The server communicates via `stdin` and `stdout` using JSON-RPC. For local development:
 ```bash
-dotnet run --project src/InstapaperMcp.Api
+dotnet run --project src/InstapaperMcp.Api --no-build -v quiet
 ```
 
-### 4. Integration with Claude Desktop
-Add the following to your `claude_desktop_config.json`:
+### 4. Integration with MCP Clients (Claude, Copilot, etc.)
+Add the following to your configuration file (e.g., `claude_desktop_config.json` or `config.json` for Copilot). 
+**Note:** Use absolute paths to ensure the project can be located from any working directory.
+
+#### Using `dotnet run` (Development)
 ```json
 {
   "mcpServers": {
     "instapaper": {
       "command": "dotnet",
-      "args": ["run", "--project", "D:/Dev/personal/instapaper-mcp/src/InstapaperMcp.Api", "--no-build"],
+      "args": [
+        "run", 
+        "--project", "D:/Dev/personal/instapaper-mcp/src/InstapaperMcp.Api/InstapaperMcp.Api.csproj", 
+        "--no-build", 
+        "-v", "quiet"
+      ],
       "env": {
         "Instapaper__ConsumerKey": "...",
         "Instapaper__ConsumerSecret": "...",
         "Instapaper__AccessToken": "...",
         "Instapaper__AccessTokenSecret": "..."
       }
+    }
+  }
+}
+```
+
+#### Using published DLL (Production - Recommended)
+1. Publish the project: `dotnet publish src/InstapaperMcp.Api -c Release -o ./publish`
+2. Use the DLL directly:
+```json
+{
+  "mcpServers": {
+    "instapaper": {
+      "command": "dotnet",
+      "args": ["D:/Dev/personal/instapaper-mcp/publish/InstapaperMcp.Api.dll"],
+      "env": { ... }
     }
   }
 }
