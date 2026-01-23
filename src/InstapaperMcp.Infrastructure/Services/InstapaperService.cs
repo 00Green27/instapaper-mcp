@@ -94,7 +94,11 @@ public sealed class InstapaperService(
     {
         var parameters = new Dictionary<string, string>();
         if (folderId.HasValue) parameters.Add("folder_id", folderId.Value.ToString());
-        if (limit > 0) parameters.Add("limit", limit.ToString());
+
+        // If we need to filter safely, we must fetch more items than requested.
+        // Instapaper max limit is 500.
+        var fetchLimit = string.IsNullOrWhiteSpace(query) ? limit : 500;
+        if (fetchLimit > 0) parameters.Add("limit", fetchLimit.ToString());
 
         var response = await SendRequestAsync(HttpMethod.Post, "bookmarks/list", parameters, ct);
         if (!response.IsSuccessStatusCode)
@@ -123,6 +127,17 @@ public sealed class InstapaperService(
                 IsStarred: element.GetProperty("starred").GetString() == "1",
                 UpdatedAt: DateTimeOffset.FromUnixTimeSeconds(element.GetProperty("time").GetInt64()).DateTime
             ));
+        }
+
+        // Perform client-side filtering if query is present
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            bookmarks = bookmarks
+                .Where(b => b.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                            b.Description.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                            b.Url.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Take(limit)
+                .ToList();
         }
 
         return Result<IReadOnlyList<Bookmark>>.Success(bookmarks);
