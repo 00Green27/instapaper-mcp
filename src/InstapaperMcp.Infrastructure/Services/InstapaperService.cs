@@ -16,6 +16,52 @@ public sealed class InstapaperService(
     ILogger<InstapaperService> logger) : IInstapaperService
 {
     private readonly InstapaperOptions _options = options.Value;
+    private static string? _cachedToken;
+    private static string? _cachedTokenSecret;
+
+    private async Task EnsureAuthenticatedAsync(CancellationToken ct)
+    {
+        if (!string.IsNullOrEmpty(_cachedToken ?? _options.AccessToken)) return;
+
+        if (string.IsNullOrEmpty(_options.Username) || string.IsNullOrEmpty(_options.Password))
+        {
+            logger.LogWarning("Authentication tokens are missing and no Username/Password provided for xAuth.");
+            return;
+        }
+
+        logger.LogInformation("Attempting xAuth for user {Username}", _options.Username);
+        var url = "https://www.instapaper.com/api/1/oauth/access_token";
+        var parameters = new Dictionary<string, string>
+        {
+            { "x_auth_username", _options.Username },
+            { "x_auth_password", _options.Password },
+            { "x_auth_mode", "client_auth" }
+        };
+
+        // For xAuth, we sign with just Consumer Key/Secret
+        var authHeader = OAuthHelper.CreateAuthorizationHeader(
+            "POST", url, _options.ConsumerKey, _options.ConsumerSecret, null, null, parameters);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "oauth/access_token");
+        request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader[6..]);
+        request.Content = new FormUrlEncodedContent(parameters);
+
+        var response = await httpClient.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException($"xAuth failed: {response.StatusCode} - {error}");
+        }
+
+        var result = await response.Content.ReadAsStringAsync(ct);
+        var parts = result.Split('&')
+            .Select(p => p.Split('='))
+            .ToDictionary(p => p[0], p => p[1]);
+
+        _cachedToken = Uri.UnescapeDataString(parts["oauth_token"]);
+        _cachedTokenSecret = Uri.UnescapeDataString(parts["oauth_token_secret"]);
+        logger.LogInformation("xAuth successful, tokens cached.");
+    }
 
     private async Task<HttpResponseMessage> SendRequestAsync(
         HttpMethod method,
@@ -23,9 +69,14 @@ public sealed class InstapaperService(
         Dictionary<string, string>? parameters = null,
         CancellationToken ct = default)
     {
+        await EnsureAuthenticatedAsync(ct);
+
         var url = $"https://www.instapaper.com/api/1/{endpoint}";
+        var token = _cachedToken ?? _options.AccessToken;
+        var secret = _cachedTokenSecret ?? _options.AccessTokenSecret;
+
         var authHeader = OAuthHelper.CreateAuthorizationHeader(
-            method.Method, url, _options.ConsumerKey, _options.ConsumerSecret, _options.AccessToken, _options.AccessTokenSecret, parameters);
+            method.Method, url, _options.ConsumerKey, _options.ConsumerSecret, token, secret, parameters);
 
         var request = new HttpRequestMessage(method, endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader[6..]);
@@ -38,7 +89,8 @@ public sealed class InstapaperService(
         return await httpClient.SendAsync(request, ct);
     }
 
-    public async Task<Result<IReadOnlyList<Bookmark>>> SearchBookmarksAsync(long? folderId, string? query, int limit, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<Bookmark>>> SearchBookmarksAsync(long? folderId, string? query, int limit,
+        CancellationToken ct)
     {
         var parameters = new Dictionary<string, string>();
         if (folderId.HasValue) parameters.Add("folder_id", folderId.Value.ToString());
@@ -57,12 +109,14 @@ public sealed class InstapaperService(
         return Result<IReadOnlyList<Bookmark>>.Success([]);
     }
 
-    public Task<Result<IReadOnlyList<Bookmark>>> GetArticlesContentAsync(IReadOnlyList<long> bookmarkIds, CancellationToken ct)
+    public Task<Result<IReadOnlyList<Bookmark>>> GetArticlesContentAsync(IReadOnlyList<long> bookmarkIds,
+        CancellationToken ct)
     {
         return Task.FromResult(Result<IReadOnlyList<Bookmark>>.Failure("Bulk content fetching not yet implemented"));
     }
 
-    public async Task<Result<Bookmark>> AddBookmarkAsync(string? url, string? content, string? title, string? description, long? folderId, CancellationToken ct)
+    public async Task<Result<Bookmark>> AddBookmarkAsync(string? url, string? content, string? title,
+        string? description, long? folderId, CancellationToken ct)
     {
         var parameters = new Dictionary<string, string>();
         if (!string.IsNullOrEmpty(url)) parameters.Add("url", url);
@@ -75,10 +129,12 @@ public sealed class InstapaperService(
         if (!response.IsSuccessStatusCode)
             return Result<Bookmark>.Failure($"Error adding bookmark: {response.StatusCode}");
 
-        return Result<Bookmark>.Success(new Bookmark(0, url ?? "", title ?? "", description ?? "", content ?? "", folderId ?? 0, false, DateTime.UtcNow));
+        return Result<Bookmark>.Success(new Bookmark(0, url ?? "", title ?? "", description ?? "", content ?? "",
+            folderId ?? 0, false, DateTime.UtcNow));
     }
 
-    public async Task<Result> ManageBookmarksAsync(IReadOnlyList<long> bookmarkIds, BookmarkAction action, CancellationToken ct)
+    public async Task<Result> ManageBookmarksAsync(IReadOnlyList<long> bookmarkIds, BookmarkAction action,
+        CancellationToken ct)
     {
         var endpoint = action switch
         {
@@ -110,6 +166,7 @@ public sealed class InstapaperService(
             };
             await SendRequestAsync(HttpMethod.Post, "bookmarks/move", parameters, ct);
         }
+
         return Result.Success();
     }
 

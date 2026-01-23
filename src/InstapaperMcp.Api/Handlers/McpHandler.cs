@@ -1,7 +1,6 @@
 using System.Text.Json;
 using InstapaperMcp.Application.Interfaces;
 using InstapaperMcp.Domain.Common;
-using Microsoft.Extensions.Logging;
 
 namespace InstapaperMcp.Api.Handlers;
 

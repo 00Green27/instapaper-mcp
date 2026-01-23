@@ -154,20 +154,36 @@ If you feel something is missing, ask:
 ## How to Run
 
 ### 1. Configuration
-Set your Instapaper API credentials using **User Secrets** (recommended for dev) or Environment Variables:
+Set your Instapaper API credentials using **User Secrets** (recommended for dev) or Environment Variables.
 
-#### Using User Secrets (Safe for local dev):
+#### Option A: Automatic Authentication (xAuth)
+If you provide your Instapaper credentials, the server will automatically exchange them for access tokens on the first request.
+
 ```bash
 cd src/InstapaperMcp.Api
-dotnet user-secrets set "Instapaper:ConsumerKey" "your_key"
-dotnet user-secrets set "Instapaper:ConsumerSecret" "your_secret"
+dotnet user-secrets set "Instapaper:ConsumerKey" "your_app_key"
+dotnet user-secrets set "Instapaper:ConsumerSecret" "your_app_secret"
+dotnet user-secrets set "Instapaper:Username" "your_email"
+dotnet user-secrets set "Instapaper:Password" "your_password"
+```
+
+#### Option B: Manual Tokens (OAuth 1.0)
+If you already have your access tokens, you can set them directly:
+
+```bash
+cd src/InstapaperMcp.Api
+dotnet user-secrets set "Instapaper:ConsumerKey" "your_app_key"
+dotnet user-secrets set "Instapaper:ConsumerSecret" "your_app_secret"
 dotnet user-secrets set "Instapaper:AccessToken" "your_token"
 dotnet user-secrets set "Instapaper:AccessTokenSecret" "your_token_secret"
 ```
 
-#### Using Environment Variables:
+#### Environment Variables:
+The following environment variables are supported (compatible with Docker/CI):
 - `Instapaper__ConsumerKey`
 - `Instapaper__ConsumerSecret`
+- `Instapaper__Username`
+- `Instapaper__Password`
 - `Instapaper__AccessToken`
 - `Instapaper__AccessTokenSecret`
 

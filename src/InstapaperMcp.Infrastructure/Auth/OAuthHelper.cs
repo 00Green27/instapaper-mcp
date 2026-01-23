@@ -1,7 +1,5 @@
-using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
-using System.Web;
 
 namespace InstapaperMcp.Infrastructure.Auth;
 
@@ -41,7 +39,8 @@ public static class OAuthHelper
         var paramString = string.Join("&", sortedParams);
 
         var baseString = $"{method.ToUpper()}&{Uri.EscapeDataString(url)}&{Uri.EscapeDataString(paramString)}";
-        var signingKey = $"{Uri.EscapeDataString(consumerSecret)}&{(tokenSecret != null ? Uri.EscapeDataString(tokenSecret) : "")}";
+        var signingKey =
+            $"{Uri.EscapeDataString(consumerSecret)}&{(tokenSecret != null ? Uri.EscapeDataString(tokenSecret) : "")}";
 
         using var hmac = new HMACSHA1(Encoding.UTF8.GetBytes(signingKey));
         var signature = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(baseString)));
