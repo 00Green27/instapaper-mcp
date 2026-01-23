@@ -18,6 +18,8 @@ public sealed class McpHandler(
             "tools/call" => await CallToolAsync(parameters, ct),
             "resources/list" => ListResources(),
             "resources/read" => await ReadResourceAsync(parameters, ct),
+            "prompts/list" => ListPrompts(),
+            "prompts/get" => GetPromptAsync(parameters),
             _ => throw new NotSupportedException($"Method '{method}' is not supported.")
         };
     }
@@ -28,7 +30,8 @@ public sealed class McpHandler(
         capabilities = new
         {
             tools = new { listChanged = true },
-            resources = new { listChanged = true }
+            resources = new { listChanged = true },
+            prompts = new { listChanged = true }
         },
         serverInfo = new
         {
@@ -75,8 +78,7 @@ public sealed class McpHandler(
                         title = new { type = "string", description = "Optional title." },
                         description = new { type = "string", description = "Optional description." },
                         folder_id = new { type = "integer", description = "Optional folder ID to add to." }
-                    },
-                    required = new[] { "url" }
+                    }
                 }
             },
             new
@@ -320,6 +322,121 @@ public sealed class McpHandler(
         }
 
         return new { contents = Array.Empty<object>() };
+    }
+
+    private static object ListPrompts() => new
+    {
+        prompts = new object[]
+        {
+            new
+            {
+                name = "daily_briefing",
+                description = "Summarize the latest unread bookmarks.",
+                arguments = new object[]
+                {
+                    new { name = "limit", description = "Number of articles to include (default 5).", required = false }
+                }
+            },
+            new
+            {
+                name = "research_mode",
+                description = "Analyze bookmarks on a specific topic.",
+                arguments = new object[]
+                {
+                    new { name = "topic", description = "The topic to research in your bookmarks.", required = true }
+                }
+            },
+            new
+            {
+                name = "clean_up_suggestions",
+                description = "Identify old or irrelevant bookmarks for archiving.",
+                arguments = Array.Empty<object>()
+            }
+        }
+    };
+
+    private object GetPromptAsync(JsonElement? parameters)
+    {
+        if (parameters == null) throw new ArgumentNullException(nameof(parameters));
+        var name = parameters.Value.GetProperty("name").GetString();
+        var args = parameters.Value.TryGetProperty("arguments", out var a) ? a : (JsonElement?)null;
+
+        return name switch
+        {
+            "daily_briefing" => HandleDailyBriefingPrompt(args),
+            "research_mode" => HandleResearchModePrompt(args),
+            "clean_up_suggestions" => HandleCleanUpPrompt(),
+            _ => throw new NotSupportedException($"Prompt '{name}' is not supported.")
+        };
+    }
+
+    private object HandleDailyBriefingPrompt(JsonElement? args)
+    {
+        var limit = args?.TryGetProperty("limit", out var l) == true ? l.GetString() : "5";
+        return new
+        {
+            description = "Daily Briefing",
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content = new
+                    {
+                        type = "text",
+                        text = $"Please fetch my latest {limit} unread bookmarks using search_bookmarks. " +
+                               "Then, get the content for each of them using get_article_content. " +
+                               "Finally, provide a concise briefing summarizing the key points of each article and why they might be interesting to read today."
+                    }
+                }
+            }
+        };
+    }
+
+    private object HandleResearchModePrompt(JsonElement? args)
+    {
+        var topic = args?.GetProperty("topic").GetString() ?? throw new ArgumentException("Topic is required.");
+        return new
+        {
+            description = $"Research Mode: {topic}",
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content = new
+                    {
+                        type = "text",
+                        text = $"I want to research '{topic}' in my Instapaper bookmarks. " +
+                               $"First, search for bookmarks related to '{topic}' using search_bookmarks. " +
+                               "Then, fetch the content of the relevant articles using get_article_content. " +
+                               $"Finally, synthesize a comprehensive overview of what my saved articles say about '{topic}', highlighting different perspectives or key data points."
+                    }
+                }
+            }
+        };
+    }
+
+    private object HandleCleanUpPrompt()
+    {
+        return new
+        {
+            description = "Clean Up Suggestions",
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content = new
+                    {
+                        type = "text",
+                        text = "Analyze my recent bookmarks (unread folder). Look for items that might be outdated, " +
+                               "redundant, or appear to be low-value (e.g., temporary lists, very old news). " +
+                               "Provide a list of suggestions for articles to archive or delete, and explain why for each."
+                    }
+                }
+            }
+        };
     }
 
     private static object FormatResult(Result result) => result.IsSuccess
