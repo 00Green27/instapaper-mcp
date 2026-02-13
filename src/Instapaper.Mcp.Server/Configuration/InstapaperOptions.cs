@@ -1,4 +1,4 @@
-namespace InstapaperMcp.Infrastructure.Configuration;
+namespace Instapaper.Mcp.Server.Configuration;
 
 public sealed class InstapaperOptions
 {

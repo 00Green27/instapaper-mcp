@@ -1,0 +1,14 @@
+{
+	"servers": {
+		"instapaper-mcp": {
+			"type": "stdio",
+			"command": "dotnet",
+			"args": [
+				"run",
+                "--project",
+                ".\\src\\Instapaper.Mcp.Server\\Instapaper.Mcp.Server.csproj"
+			]
+		}
+	},
+	"inputs": []
+}
