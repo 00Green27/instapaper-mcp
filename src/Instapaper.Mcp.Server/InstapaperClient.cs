@@ -37,27 +37,81 @@ public sealed class InstapaperClient : IInstapaperClient
         int? limit,
         CancellationToken ct = default)
     {
-        var parameters = new Dictionary<string, string>();
-        if (query != null)
-            parameters["search"] = query;
+        const int MaxApiLimit = 500;
+        const int MaxPages = 10;
 
+        var parameters = new Dictionary<string, string>();
         if (folderId.HasValue)
             parameters["folder_id"] = folderId.Value.ToString();
+
+        var lowerQuery = !string.IsNullOrWhiteSpace(query) ? query!.ToLowerInvariant() : null;
 
         if (!limit.HasValue || limit <= 0)
             limit = DefaultLimit;
 
-        limit = Math.Min(limit.Value, 500);
+        int effectiveLimit = Math.Min(limit.Value, MaxApiLimit * MaxPages);
 
-        parameters["limit"] = limit.Value.ToString();
+        var results = new List<Bookmark>();
+        var seenIds = new List<string>();
+        for (int page = 0; page < MaxPages; page++)
+        {
+            parameters["limit"] = MaxApiLimit.ToString();
+
+            if (seenIds.Count > 0)
+            {
+                parameters["have"] = string.Join(",", seenIds);
+            }
+            var items = await SendAsync<List<InstapaperItem>>(
+                HttpMethod.Post,
+                "bookmarks/list",
+                parameters,
+                ct);
+
+            if (items == null) break;
+
+            var newBookmarks = items.OfType<Bookmark>().ToArray();
+
+            if (newBookmarks.Length == 0) break;
+
+            seenIds.AddRange(newBookmarks.Select(b => b.BookmarkId.ToString()));
+
+            var candidates = lowerQuery is not null
+                ? newBookmarks.Where(b =>
+                    b.Title?.ToLowerInvariant().Contains(lowerQuery, StringComparison.InvariantCultureIgnoreCase) ?? false)
+                : newBookmarks.AsEnumerable();
+
+            results.AddRange(candidates);
+
+            if (results.Count >= effectiveLimit) break;
+        }
+
+        return results.Take(limit.Value).ToArray();
+    }
+
+    public async Task<Bookmark> AddBookmarkAsync(
+        string url,
+        string? title,
+        string? description,
+        int? folderId,
+        CancellationToken ct = default)
+    {
+        var parameters = new Dictionary<string, string>();
+        if (!string.IsNullOrEmpty(url))
+            parameters["url"] = url;
+        if (!string.IsNullOrEmpty(title))
+            parameters["title"] = title;
+        if (!string.IsNullOrEmpty(description))
+            parameters["description"] = description;
+        if (folderId.HasValue)
+            parameters["folder_id"] = folderId.Value.ToString();
 
         var items = await SendAsync<List<InstapaperItem>>(
             HttpMethod.Post,
-            "bookmarks/list",
+            "bookmarks/add",
             parameters,
             ct);
 
-        return items.OfType<Bookmark>().ToArray();
+        return items.OfType<Bookmark>().First();
     }
 
     // get_article_content (single and bulk)

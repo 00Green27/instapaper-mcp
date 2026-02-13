@@ -13,7 +13,7 @@ public sealed class InstapaperResources
         _instapaperClient = instapaperClient;
     }
 
-    [McpServerResource(UriTemplate = "instapaper://reading-list", Name = "Unread articles", MimeType = "application/json")]
+    [McpServerResource(UriTemplate = "instapaper://bookmarks/unread", Name = "Unread articles", MimeType = "application/json")]
     [Description("List of unread bookmarks with metadata")]
     public async Task<IReadOnlyCollection<Bookmark>> GetBookmarksAsync(CancellationToken cancellationToken) =>
     await _instapaperClient.SearchBookmarksAsync(null, null, null, cancellationToken);
