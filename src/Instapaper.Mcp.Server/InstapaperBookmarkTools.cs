@@ -39,9 +39,9 @@ public sealed class InstapaperBookmarkTools
     string? content,
     [Description("Optional controls whether redirects are resolved before saving the URL.")]
     bool resolveFinalUrl,
-    [Description("archive the article while adding it")]
-bool archiveOnAdd,
-CancellationToken cancellationToken) =>
+    [Description("Archive the bookmark while adding it.")]
+    bool archiveOnAdd,
+    CancellationToken cancellationToken) =>
 await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, content, resolveFinalUrl, archiveOnAdd, cancellationToken);
 
   [McpServerTool(Name = "move_bookmarks")]

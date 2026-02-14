@@ -251,6 +251,22 @@ public sealed class InstapaperClient : IInstapaperClient
         return !items.OfType<Folder>().Any();
     }
 
+    public async Task<IReadOnlyCollection<Folder>> ReorderFoldersAsync((long folderId, int position)[] folderOrders, CancellationToken ct = default)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["order"] = string.Join(',', folderOrders.Select((f, o) => $"{f}:{o}"))
+        };
+
+        var items = await SendAsync<List<InstapaperItem>>(
+            HttpMethod.Get,
+            "folders/set_order",
+            parameters,
+            ct);
+
+        return items.OfType<Folder>().ToArray();
+    }
+
     private async Task<T> SendAsync<T>(HttpMethod method, string path, Dictionary<string, string>? parameters, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, path);

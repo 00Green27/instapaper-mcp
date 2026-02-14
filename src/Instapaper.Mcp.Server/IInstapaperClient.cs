@@ -14,4 +14,5 @@ public interface IInstapaperClient
   Task<IReadOnlyCollection<Folder>> ListFoldersAsync(CancellationToken ct = default);
   Task<Folder> CreateFolderAsync(string title, CancellationToken ct = default);
   Task<bool> DeleteFolderAsync(long folderId, CancellationToken ct = default);
+  Task<IReadOnlyCollection<Folder>> ReorderFoldersAsync((long folderId, int position)[] folderOrders, CancellationToken cancellationToken);
 }

@@ -43,4 +43,11 @@ public sealed class InstapaperFolderTools
     [Description("List folders.")]
     public async Task<IReadOnlyCollection<Folder>> ListFolderAsync(CancellationToken cancellationToken) =>
       await _instapaperClient.ListFoldersAsync(cancellationToken);
+
+
+    [McpServerTool(Name = "reorder_folders")]
+    [Description("Re-orders a user's folders.")]
+    public async Task<IReadOnlyCollection<Folder>> ReorderFoldersAsync((long folderId, int position)[] folderOrders, CancellationToken cancellationToken) =>
+      await _instapaperClient.ReorderFoldersAsync(folderOrders, cancellationToken);
+
 }
