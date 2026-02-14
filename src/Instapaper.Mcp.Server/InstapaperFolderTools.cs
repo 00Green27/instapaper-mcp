@@ -34,6 +34,11 @@ public sealed class InstapaperFolderTools
         }
     }
 
+    [McpServerTool(Name = "delete_folder")]
+    [Description("Delete folder.")]
+    public async Task<bool> DeleteFolderAsync(long folderId, CancellationToken cancellationToken) =>
+      await _instapaperClient.DeleteFolderAsync(folderId, cancellationToken);
+
     [McpServerTool(Name = "list_folders")]
     [Description("List folders.")]
     public async Task<IReadOnlyCollection<Folder>> ListFolderAsync(CancellationToken cancellationToken) =>
