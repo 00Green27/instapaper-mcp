@@ -17,9 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference
-      Include="..\..\src\InstapaperMcp.Infrastructure\InstapaperMcp.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\src\InstapaperMcp.Api\InstapaperMcp.Api.csproj" />
+    <ProjectReference Include="..\..\src\Instapaper.Mcp.Server\Instapaper.Mcp.Server.csproj" />
   </ItemGroup>
 
 </Project>
