@@ -5,6 +5,6 @@ public enum BookmarkAction
     Archive,
     Unarchive,
     Delete,
-    Star,
-    Unstar
+    Mark,
+    Unmark
 }

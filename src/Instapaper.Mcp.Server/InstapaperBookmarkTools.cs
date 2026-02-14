@@ -3,11 +3,11 @@ using Instapaper.Mcp.Server;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class InstapaperTools
+public sealed class InstapaperBookmarkTools
 {
   private readonly IInstapaperClient _instapaperClient;
 
-  public InstapaperTools(IInstapaperClient instapaperClient)
+  public InstapaperBookmarkTools(IInstapaperClient instapaperClient)
   {
     _instapaperClient = instapaperClient;
   }
@@ -64,32 +64,43 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     CancellationToken cancellationToken) =>
     await _instapaperClient.MoveBookmarkAsync(bookmarkId, folderId, cancellationToken);
 
-  [McpServerTool(Name = "create_folder")]
-  [Description("Creates an organizational folder.")]
-  public async Task<Folder> CreateFolderAsync(
-    [Description("The title of the folder.")]
-    string title,
-    CancellationToken cancellationToken)
-  {
-    try
-    {
-      return await _instapaperClient.CreateFolderAsync(title, cancellationToken);
-    }
-    catch (InstapaperApiException ex) when (ex.ErrorCode == InstapaperErrorCode.FolderAlreadyExists)
-    {
-      var folder = await _instapaperClient.SearchFolderAsync(title, cancellationToken);
-
-      if (folder is null)
-      {
-        throw new InvalidOperationException("Something went wrong.");
-      }
-      return folder;
-    }
-  }
-
-  [McpServerTool(Name = "list_folders")]
-  [Description("List folders.")]
-  public async Task<IReadOnlyCollection<Folder>> ListFolderAsync(
+  [McpServerTool(Name = "archive_bookmark")]
+  [Description("Move bookmark to archive.")]
+  public async Task<Bookmark> ArchiveBookmarkAsync(
+    [Description("The bookmark ID to archive.")]
+    long bookmarkId,
     CancellationToken cancellationToken) =>
-    await _instapaperClient.ListFoldersAsync(cancellationToken);
+    await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Archive, cancellationToken);
+
+  [McpServerTool(Name = "archive_bookmark")]
+  [Description("Move bookmark to archive.")]
+  public async Task<IReadOnlyCollection<Bookmark>> ArchiveBookmarksAsync(
+    [Description("List of bookmark IDs to archive.")]
+    IEnumerable<long> bookmarkIds,
+    CancellationToken cancellationToken) =>
+    await _instapaperClient.ManageBookmarksAsync(bookmarkIds, BookmarkAction.Archive, cancellationToken);
+
+  [McpServerTool(Name = "unarchive_bookmark")]
+  [Description("Restore bookmark from archive.")]
+  public async Task<Bookmark> UnarchiveBookmarkAsync(
+    [Description("The bookmark ID to restore.")]
+    long bookmarkId,
+    CancellationToken cancellationToken) =>
+    await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Unarchive, cancellationToken);
+
+  [McpServerTool(Name = "mark_bookmark")]
+  [Description("Mark bookmark as important.")]
+  public async Task<Bookmark> MarkBookmarkAsync(
+    [Description("The bookmark ID to archive.")]
+    long bookmarkId,
+    CancellationToken cancellationToken) =>
+    await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Mark, cancellationToken);
+
+  [McpServerTool(Name = "unmark_bookmark")]
+  [Description("Unmark bookmark as important.")]
+  public async Task<Bookmark> UnmarkBookmarkAsync(
+    [Description("The bookmark ID to restore.")]
+    long bookmarkId,
+    CancellationToken cancellationToken) =>
+    await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Unmark, cancellationToken);
 }

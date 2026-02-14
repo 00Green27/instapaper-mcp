@@ -154,8 +154,8 @@ public sealed class InstapaperClient : IInstapaperClient
             BookmarkAction.Archive => "bookmarks/archive",
             BookmarkAction.Unarchive => "bookmarks/unarchive",
             BookmarkAction.Delete => "bookmarks/delete",
-            BookmarkAction.Star => "bookmarks/star",
-            BookmarkAction.Unstar => "bookmarks/unstar",
+            BookmarkAction.Mark => "bookmarks/star",
+            BookmarkAction.Unmark => "bookmarks/unstar",
             _ => throw new ArgumentOutOfRangeException(nameof(action))
         };
 
