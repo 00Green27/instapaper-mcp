@@ -62,6 +62,15 @@ public sealed record Highlight : InstapaperItem
     public required string Text { get; init; }
 }
 
+public sealed record Error : InstapaperItem
+{
+    [JsonPropertyName("error_code")]
+    public InstapaperErrorCode ErrorCode { get; init; }
+
+    [JsonPropertyName("message")]
+    public required string Message { get; init; }
+}
+
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(List<InstapaperItem>))]
 [JsonSerializable(typeof(Meta))]
@@ -69,4 +78,5 @@ public sealed record Highlight : InstapaperItem
 [JsonSerializable(typeof(Bookmark))]
 [JsonSerializable(typeof(Folder))]
 [JsonSerializable(typeof(Highlight))]
+[JsonSerializable(typeof(Error))]
 public sealed partial class InstapaperJsonContext : JsonSerializerContext;

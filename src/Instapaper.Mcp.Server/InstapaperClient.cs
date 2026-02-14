@@ -31,9 +31,9 @@ public sealed class InstapaperClient : IInstapaperClient
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<Bookmark>> SearchBookmarksAsync(
+    public async Task<IReadOnlyCollection<Bookmark>> ListBookmarksAsync(
         string? query,
-        long? folderId,
+        string? folderId,
         int? limit,
         CancellationToken ct = default)
     {
@@ -41,8 +41,8 @@ public sealed class InstapaperClient : IInstapaperClient
         const int MaxPages = 10;
 
         var parameters = new Dictionary<string, string>();
-        if (folderId.HasValue)
-            parameters["folder_id"] = folderId.Value.ToString();
+        if (!string.IsNullOrEmpty(folderId))
+            parameters["folder_id"] = folderId.ToString();
 
         var lowerQuery = !string.IsNullOrWhiteSpace(query) ? query!.ToLowerInvariant() : null;
 
@@ -89,21 +89,33 @@ public sealed class InstapaperClient : IInstapaperClient
     }
 
     public async Task<Bookmark> AddBookmarkAsync(
-        string url,
-        string? title,
-        string? description,
-        int? folderId,
+        string? url = null,
+        string? title = null,
+        string? description = null,
+        long? folderId = null,
+        string? content = null,
+        bool resolveFinalUrl = true,
+        bool archiveOnAdd = false,
         CancellationToken ct = default)
     {
         var parameters = new Dictionary<string, string>();
-        if (!string.IsNullOrEmpty(url))
+        if (url != null)
             parameters["url"] = url;
-        if (!string.IsNullOrEmpty(title))
+        if (title != null)
             parameters["title"] = title;
-        if (!string.IsNullOrEmpty(description))
+        if (description != null)
             parameters["description"] = description;
         if (folderId.HasValue)
             parameters["folder_id"] = folderId.Value.ToString();
+        if (content != null)
+            parameters["content"] = content;
+        parameters["resolve_final_url"] = resolveFinalUrl ? "1" : "0";
+        parameters["archived"] = archiveOnAdd ? "1" : "0";
+
+        if (url == null && content != null)
+        {
+            parameters["is_private_from_source"] = "note";
+        }
 
         var items = await SendAsync<List<InstapaperItem>>(
             HttpMethod.Post,
@@ -114,8 +126,7 @@ public sealed class InstapaperClient : IInstapaperClient
         return items.OfType<Bookmark>().First();
     }
 
-    // get_article_content (single and bulk)
-    public async Task<string> GetArticleContentAsync(long bookmarkId, CancellationToken ct = default)
+    public async Task<string> GetBookmarkContentAsync(long bookmarkId, CancellationToken ct = default)
     {
         var parameters = new Dictionary<string, string>
         {
@@ -129,7 +140,65 @@ public sealed class InstapaperClient : IInstapaperClient
             , ct);
     }
 
-    public async Task<IReadOnlyList<Folder>> ListFoldersAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyDictionary<long, string>> GetBookmarkContentsAsync(IEnumerable<long> bookmarkIds, CancellationToken ct = default)
+    {
+        var tasks = bookmarkIds.Select(async id => (id, content: await GetBookmarkContentAsync(id, ct)));
+        var results = await Task.WhenAll(tasks);
+        return new Dictionary<long, string>(results.ToDictionary(x => x.id, x => x.content));
+    }
+
+    public async Task<Bookmark> ManageBookmarksAsync(long bookmarkId, BookmarkAction action, CancellationToken ct = default)
+    {
+        string path = action switch
+        {
+            BookmarkAction.Archive => "bookmarks/archive",
+            BookmarkAction.Unarchive => "bookmarks/unarchive",
+            BookmarkAction.Delete => "bookmarks/delete",
+            BookmarkAction.Star => "bookmarks/star",
+            BookmarkAction.Unstar => "bookmarks/unstar",
+            _ => throw new ArgumentOutOfRangeException(nameof(action))
+        };
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["bookmark_id"] = bookmarkId.ToString()
+        };
+
+        var items = await SendAsync<List<InstapaperItem>>(HttpMethod.Post, path, parameters, ct);
+
+        return items.OfType<Bookmark>().First();
+    }
+
+    public async Task<IReadOnlyCollection<Bookmark>> ManageBookmarksAsync(IEnumerable<long> bookmarkIds, BookmarkAction action, CancellationToken ct = default)
+    {
+        var tasks = bookmarkIds.Select(async id => await ManageBookmarksAsync(id, action, ct));
+        return await Task.WhenAll(tasks);
+    }
+
+    public async Task<Bookmark> MoveBookmarkAsync(long bookmarkId, long folderId, CancellationToken ct = default)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["bookmark_id"] = bookmarkId.ToString(),
+            ["folder_id"] = folderId.ToString()
+        };
+
+        var items = await SendAsync<List<InstapaperItem>>(
+            HttpMethod.Post,
+            "bookmarks/move",
+             parameters,
+             ct);
+
+        return items.OfType<Bookmark>().First();
+    }
+
+    public async Task<IReadOnlyCollection<Bookmark>> MoveBookmarksAsync(IEnumerable<long> bookmarkIds, long folderId, CancellationToken ct = default)
+    {
+        var tasks = bookmarkIds.Select(async id => await MoveBookmarkAsync(id, folderId, ct));
+        return await Task.WhenAll(tasks);
+    }
+
+    public async Task<IReadOnlyCollection<Folder>> ListFoldersAsync(CancellationToken ct = default)
     {
         var items = await SendAsync<List<InstapaperItem>>(
             HttpMethod.Get,
@@ -138,6 +207,48 @@ public sealed class InstapaperClient : IInstapaperClient
             ct);
 
         return items.OfType<Folder>().ToArray();
+    }
+    public async Task<Folder?> SearchFolderAsync(string title, CancellationToken ct = default)
+    {
+        var items = await SendAsync<List<InstapaperItem>>(
+            HttpMethod.Get,
+            "folders/list",
+            parameters: null,
+            ct);
+
+        return items.OfType<Folder>().FirstOrDefault(x => string.Equals(x.Title, title, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public async Task<Folder> CreateFolderAsync(string title, CancellationToken ct = default)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["title"] = title
+        };
+
+        var items = await SendAsync<List<InstapaperItem>>(
+        HttpMethod.Post,
+            "folders/add",
+            parameters,
+            ct);
+
+        return items.OfType<Folder>().First();
+    }
+
+    public async Task<bool> DeleteFolderAsync(long folderId, CancellationToken ct = default)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["folder_id"] = folderId.ToString()
+        };
+
+        var items = await SendAsync<List<InstapaperItem>>(
+            HttpMethod.Post,
+            "folders/delete",
+            parameters,
+            ct);
+
+        return !items.OfType<Folder>().Any();
     }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, Dictionary<string, string>? parameters, CancellationToken ct)
@@ -157,8 +268,8 @@ public sealed class InstapaperClient : IInstapaperClient
 
         if (!response.IsSuccessStatusCode)
         {
-            var payload = await new StreamReader(stream).ReadToEndAsync(ct);
-            throw InstapaperApiException.FromResponse(response, payload);
+            var error = JsonSerializer.Deserialize(stream, InstapaperJsonContext.Default.Error);
+            throw InstapaperApiException.FromResponse(response, error);
         }
 
         T? result = (T?)JsonSerializer.Deserialize(stream, typeof(List<InstapaperItem>), InstapaperJsonContext.Default);
