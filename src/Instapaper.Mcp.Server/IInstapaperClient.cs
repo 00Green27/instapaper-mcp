@@ -3,7 +3,7 @@
 public interface IInstapaperClient
 {
   Task<IReadOnlyCollection<Bookmark>> ListBookmarksAsync(string? query, string? folderId, int? limit, CancellationToken ct = default);
-  Task<Bookmark> AddBookmarkAsync(string? url = null, string? title = null, string? description = null, long? folderId = null, string? content = null, bool resolveFinalUrl = true, bool archiveOnAdd = false, CancellationToken ct = default);
+  Task<Bookmark> AddBookmarkAsync(string? url = null, string? title = null, string? description = null, long? folderId = null, string? content = null, bool resolveFinalUrl = true, bool archiveOnAdd = false, List<string>? tags = null, CancellationToken ct = default);
   Task<string> GetBookmarkContentAsync(long bookmarkId, CancellationToken ct = default);
   Task<IReadOnlyDictionary<long, string>> GetBookmarkContentsAsync(IEnumerable<long> bookmarkIds, CancellationToken ct = default);
   Task<Bookmark> ManageBookmarksAsync(long bookmarkId, BookmarkAction action, CancellationToken ct = default);

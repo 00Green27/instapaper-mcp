@@ -20,29 +20,34 @@ public sealed class InstapaperBookmarkTools
     [Description("Optional folder ID to search in. Possible values are unread (default), starred, archive, or a folder ID")]
     string? folderId,
     [Description("Maximum number of items to return (default 100).")]
-    int? limit,
-    CancellationToken cancellationToken) =>
-    await _instapaperClient.ListBookmarksAsync(query, folderId, limit, cancellationToken);
+    string? limit,
+    CancellationToken cancellationToken)
+  {
+    int.TryParse(limit, out var parseLimit);
+    return await _instapaperClient.ListBookmarksAsync(query, folderId, parseLimit, cancellationToken);
+  }
 
   [McpServerTool(Name = "add_bookmark")]
   [Description("Add a new bookmark or note.")]
   public async Task<Bookmark> AddBookmarkAsync(
-    [Description("The URL of the bookmark or note.")]
+  [Description("The URL of the bookmark or note.")]
     string? url,
-    [Description("Optional title.")]
+  [Description("Optional title.")]
     string? title,
-    [Description("Optional description.")]
+  [Description("Optional description.")]
     string? description,
-    [Description("Optional folder ID to add to.")]
+  [Description("Optional folder ID to add to.")]
     int? folderId,
-    [Description("The full HTML content of the page.")]
+  [Description("The full HTML content of the page.")]
     string? content,
-    [Description("Optional controls whether redirects are resolved before saving the URL.")]
+  [Description("Optional controls whether redirects are resolved before saving the URL.")]
     bool resolveFinalUrl,
-    [Description("Archive the bookmark while adding it.")]
+  [Description("Archive the bookmark while adding it.")]
     bool archiveOnAdd,
-    CancellationToken cancellationToken) =>
-  await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, content, resolveFinalUrl, archiveOnAdd, cancellationToken);
+  [Description("Optional. List of tags. Tags will be created if they do not already exist.")]
+    List<string> tags,
+  CancellationToken cancellationToken) =>
+await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, content, resolveFinalUrl, archiveOnAdd, tags, cancellationToken);
 
   [McpServerTool(Name = "move_bookmarks")]
   [Description("Move bookmarks to a different folder.")]

@@ -96,6 +96,7 @@ public sealed class InstapaperClient : IInstapaperClient
         string? content = null,
         bool resolveFinalUrl = true,
         bool archiveOnAdd = false,
+        List<string>? tags = null,
         CancellationToken ct = default)
     {
         var parameters = new Dictionary<string, string>();
@@ -109,6 +110,8 @@ public sealed class InstapaperClient : IInstapaperClient
             parameters["folder_id"] = folderId.Value.ToString();
         if (content != null)
             parameters["content"] = content;
+        if (tags?.Any() == true)
+            parameters["tags"] = JsonSerializer.Serialize(tags.Select(tag => new { Name = tag }));
         parameters["resolve_final_url"] = resolveFinalUrl ? "1" : "0";
         parameters["archived"] = archiveOnAdd ? "1" : "0";
 

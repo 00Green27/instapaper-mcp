@@ -42,6 +42,17 @@ public sealed record Bookmark : InstapaperItem
 
     [JsonPropertyName("folder_id")]
     public long FolderId { get; init; }
+    IReadOnlyCollection<Tag> Tags { get; init; } = new List<Tag>();
+}
+
+public sealed record Tag
+{
+
+    [JsonPropertyName("id")]
+    public int Id { get; init; }
+
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
 }
 
 public sealed record Folder : InstapaperItem
@@ -76,6 +87,7 @@ public sealed record Error : InstapaperItem
 [JsonSerializable(typeof(Meta))]
 [JsonSerializable(typeof(User))]
 [JsonSerializable(typeof(Bookmark))]
+[JsonSerializable(typeof(Tag))]
 [JsonSerializable(typeof(Folder))]
 [JsonSerializable(typeof(Highlight))]
 [JsonSerializable(typeof(Error))]
