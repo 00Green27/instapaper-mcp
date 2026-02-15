@@ -8,6 +8,7 @@ namespace Instapaper.Mcp.Server;
 [JsonDerivedType(typeof(Bookmark), "bookmark")]
 [JsonDerivedType(typeof(Folder), "folder")]
 [JsonDerivedType(typeof(Highlight), "highlight")]
+[JsonDerivedType(typeof(Error), "error")]
 public abstract record InstapaperItem
 {
 }
