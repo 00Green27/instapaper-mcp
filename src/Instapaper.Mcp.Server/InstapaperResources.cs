@@ -26,7 +26,7 @@ public sealed class InstapaperResources
     [McpServerResource(UriTemplate = "instapaper://bookmarks/starred", Name = "Starred bookmarks", MimeType = "application/json")]
     [Description("List of starred bookmarks.")]
     public async Task<IReadOnlyCollection<Bookmark>> GetStarredBookmarksAsync(CancellationToken cancellationToken) =>
-    await _instapaperClient.ListBookmarksAsync(null, "archive", null, cancellationToken);
+    await _instapaperClient.ListBookmarksAsync(null, "starred", null, cancellationToken);
 
     [McpServerResource(UriTemplate = "instapaper://folders", Name = "Folders", MimeType = "application/json")]
     [Description("List of all user folders.")]

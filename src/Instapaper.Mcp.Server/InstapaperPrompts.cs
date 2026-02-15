@@ -19,7 +19,8 @@ public class InstapaperPrompts
     [McpServerPrompt(Name = "research_mode")]
     [Description("Analyze bookmarks on a specific topic.")]
     public static string Research(
-        [Description("The topic to research in your bookmarks.")] int topic) => $"Analyze bookmarks on a specific topic. The topic is {topic}.";
+        [Description("The topic to research in your bookmarks.")]
+        string topic) => $"Analyze bookmarks on a specific topic. The topic is {topic}.";
 
     [McpServerPrompt(Name = "clean_up_suggestions")]
     [Description("Identify old bookmarks to archive.")]

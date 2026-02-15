@@ -77,7 +77,7 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     CancellationToken cancellationToken) =>
     await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Archive, cancellationToken);
 
-  [McpServerTool(Name = "archive_bookmark")]
+  [McpServerTool(Name = "archive_bookmarks")]
   [Description("Move bookmark to archive.")]
   public async Task<IReadOnlyCollection<Bookmark>> ArchiveBookmarksAsync(
     [Description("List of bookmark IDs to archive.")]
