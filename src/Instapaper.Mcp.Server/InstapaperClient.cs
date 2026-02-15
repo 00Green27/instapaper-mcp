@@ -189,7 +189,7 @@ public sealed class InstapaperClient : IInstapaperClient
              parameters,
              ct);
 
-        return items.OfType<Bookmark>().First();
+        return items.OfType<Bookmark>().First() with { FolderId = folderId };
     }
 
     public async Task<IReadOnlyCollection<Bookmark>> MoveBookmarksAsync(IEnumerable<long> bookmarkIds, long folderId, CancellationToken ct = default)

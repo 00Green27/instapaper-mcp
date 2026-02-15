@@ -48,7 +48,7 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
   [Description("Move bookmarks to a different folder.")]
   public async Task<IReadOnlyCollection<Bookmark>> MoveBookmarksAsync(
     [Description("List of bookmark IDs to move.")]
-    IEnumerable<long> bookmarkIds,
+    List<long> bookmarkIds,
     [Description("The target folder ID.")]
     long folderId,
     CancellationToken cancellationToken) =>
@@ -76,7 +76,7 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
   [Description("Move bookmark to archive.")]
   public async Task<IReadOnlyCollection<Bookmark>> ArchiveBookmarksAsync(
     [Description("List of bookmark IDs to archive.")]
-    IEnumerable<long> bookmarkIds,
+    List<long> bookmarkIds,
     CancellationToken cancellationToken) =>
     await _instapaperClient.ManageBookmarksAsync(bookmarkIds, BookmarkAction.Archive, cancellationToken);
 
