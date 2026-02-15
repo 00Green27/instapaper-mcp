@@ -42,7 +42,7 @@ public sealed class InstapaperBookmarkTools
     [Description("Archive the bookmark while adding it.")]
     bool archiveOnAdd,
     CancellationToken cancellationToken) =>
-await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, content, resolveFinalUrl, archiveOnAdd, cancellationToken);
+  await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, content, resolveFinalUrl, archiveOnAdd, cancellationToken);
 
   [McpServerTool(Name = "move_bookmarks")]
   [Description("Move bookmarks to a different folder.")]

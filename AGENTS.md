@@ -1,122 +1,183 @@
-# AGENTS.md — instapaper-mcp
+# Agent Instructions
 
-## Purpose
-This document defines strict rules for AI agents and contributors working on the
-instapaper-mcp project.
+Instructions for GitHub Copilot and other AI coding agents working with the Instapaper MCP Server repository.
 
-The primary goal of this repository is to provide a **clean, minimal, agent-first MCP server**
-for interacting with Instapaper data in a way that is reliable, predictable, and context-safe
-for large language models.
+## Repository Overview
 
----
+A minimal, agent-first MCP server for interacting with Instapaper.
 
-## Agent Role
-You are acting as a senior .NET engineer with experience in:
+This project is intentionally opinionated.
+It is designed for **AI agents**, not for recreating the Instapaper UI.
 
-- C# and modern .NET
-- ASP.NET Core
-- Model Context Protocol (MCP)
-- Agent-oriented API design
-- Distributed and integration-heavy systems
+### Key Components
 
-You must think in terms of **agent intent**, not UI workflows.
+- **Instapaper.Mcp.Server**: Instapaper MCP Server
 
----
+### Technology Stack
 
-## Core Design Principles
+- .NET 10.0
+- C# 13 preview features
+- xUnit SDK v3 with Microsoft.Testing.Platform for testing
+- Microsoft.DotNet.Arcade.Sdk for build infrastructure
+- ModelContextProtocol package for MCP implementation
+- Multi-platform support (Windows, Linux, macOS, containers)
 
-### Agent-First API
-This project is designed for AI agents, not human users.
+## General
 
-Avoid:
-- UI-driven abstractions
-- Visual concepts (ordering, progress bars, pagination as UX)
-- Redundant tools for similar intents
+- Make only high confidence suggestions when reviewing code changes.
+- Always use the latest version C#, currently C# 13 features.
+- Never change global.json unless explicitly asked to.
+- Never change package.json or package-lock.json files unless explicitly asked to.
+- Never change NuGet.config files unless explicitly asked to.
+- Don't update generated files (e.g., API definitions or auto-generated code) as they are generated.
 
-Prefer:
-- Intent-based operations
-- State transitions (unread → archived)
-- Bulk operations by default
+## Code Review Instructions
 
----
+When reviewing pull requests:
 
-### Tool Minimalism (Critical Rule)
-Tool explosion is considered a bug.
+- New public APIs should be reviewed for design, naming, and functionality.
+- Only flag API concerns if there are breaking changes to existing APIs without proper justification.
 
-Rules:
-- One intent = one tool
-- Bulk operations are the default
-- Single-item operations are represented as arrays of size 1
-- No separate “bulk” tools
+## Formatting
 
-If a new tool is proposed, it must justify:
-1. Why it cannot be expressed as an action
-2. Why it cannot reuse an existing tool
+- Apply code-formatting style defined in `.editorconfig`.
+- Prefer file-scoped namespace declarations and single-line using directives.
+- Insert a newline before the opening curly brace of any code block (e.g., after `if`, `for`, `while`, `foreach`, `using`, `try`, etc.).
+- Ensure that the final return statement of a method is on its own line.
+- Use pattern matching and switch expressions wherever possible.
+- Use `nameof` instead of string literals when referring to member names.
+- Place private class declarations at the bottom of the file.
 
----
+### Nullable Reference Types
 
-## Tool Philosophy
+- Declare variables non-nullable, and check for `null` at entry points.
+- Always use `is null` or `is not null` instead of `== null` or `!= null`.
+- Trust the C# null annotations and don't add null checks when the type system says a value cannot be null.
 
-### add_bookmark
-Represents a single concept: “store something to read or remember”.
+### Building
 
-- If `url` is provided → external article
-- If `content` is provided → private note
-- No separate “private bookmark” concept
+Use standard .NET CLI commands for building the project. Ensure you have the correct .NET SDK installed as specified in global.json.
 
----
+#### Prerequisites
 
-### State Management
-Agents do not “read with eyes”.
+1. **Install .NET SDK**: Download and install the required .NET SDK version from the official Microsoft website if not already present.
 
-- Reading progress is irrelevant
-- “Read” is modeled as `archive`
-- No progress tracking tools are allowed
+#### Build Commands
 
----
+- **Restore Packages**: `dotnet restore`
+- **Build**: `dotnet build`
+- **Build with No Restore**: `dotnet build --no-restore` (assumes restore already done)
+- **Clean Build**: `dotnet clean` followed by `dotnet build`
+- **Package Generation**: `dotnet pack` to create NuGet packages
 
-### Folder Management
-Folders are logical containers, not visual lists.
+#### Build Troubleshooting
 
-- Ordering is irrelevant
-- Reordering tools are forbidden
-- Move operations must be explicit and bulk-capable
+- If build fails with SDK errors, verify the .NET SDK version and run `dotnet restore` again.
+- Treat warnings as errors; address all warnings before committing.
+- Build artifacts go to `bin/` and `obj/` directories by default.
 
----
+#### Visual Studio / VS Code Setup
 
-## Resources and Context Safety
+- **VS Code**: Open the project folder and use the .NET CLI commands or integrated terminal.
+- **Visual Studio**: Open the solution file (.slnx) and build from the IDE.
 
-Resources must be safe for LLM context windows.
+### Testing
 
-Rules:
-- No unbounded lists
-- Default limits must be enforced
-- Lazy or paged access is preferred
-- Large resources must be explicitly requested
+- We use xUnit SDK v3 with Microsoft.Testing.Platform (https://learn.microsoft.com/dotnet/core/testing/microsoft-testing-platform-intro)
+- Do not emit "Act", "Arrange" or "Assert" comments.
+- We do not use any mocking framework at the moment.
+- Copy existing style in nearby files for test method names and capitalization.
+- Do not leave newly-added tests commented out. All added tests should be building and passing.
+- Do not use Directory.SetCurrentDirectory in tests as it can cause side effects when tests execute concurrently.
 
-Example:
-- `instapaper://bookmarks/unread` must return a limited subset by default
+## Running tests
 
----
+(1) Restore and build the project: `dotnet restore` then `dotnet build`.
+(2) If there are errors, fix them and rebuild.
+(3) To run tests for a specific project: `dotnet test tests/InstapaperMcp.Tests/InstapaperMcp.Tests.csproj --no-build`
+(4) To run specific tests, use filters: `dotnet test --filter "FullyQualifiedName~TestNamespace.TestClass.TestMethod"`
 
-## Testing Expectations
-- Core logic must be unit-testable
-- Tool behavior must be deterministic
-- No hidden state or side effects
-- Errors must be explicit and explainable to agents
+**Important**: In automation, use appropriate filters to exclude flaky or long-running tests.
 
----
+### Test Verification Commands
 
-## Forbidden Changes
-AI agents and contributors must not:
-- Add UI-only concepts
-- Introduce redundant tools
-- Add silent breaking changes
-- Return unbounded data from resources
+- **Single Test Project**: Typical runtime ~10-60 seconds per test project
+- **Full Test Suite**: Can take 30+ minutes, use targeted testing instead
 
----
+## Project Layout and Architecture
 
-## Guiding Principle
-If an AI agent can misunderstand an API, it eventually will.
+### Directory Structure
 
-Design for clarity, not completeness.
+- **`/src`**: Main source code for all packages
+  - **`/src/Instapaper.Mcp.Server`**: Main MCP server implementation with tools, resources, and configuration
+- **`/tests`**: Comprehensive test suites mirroring src structure
+- **`/docs`**: Documentation including contributing guides and area ownership
+- **`/.github`**: CI/CD workflows, issue templates, and GitHub automation
+
+### Key Configuration Files
+
+- **`global.json`**: Pins .NET SDK version - never modify without explicit request
+- **`.editorconfig`**: Code formatting rules, null annotations, diagnostic configurations
+- **`Directory.Build.props`**: Shared MSBuild properties across all projects
+- **`Directory.Packages.props`**: Centralized package version management
+- **`InstapaperMcp.slnx`**: Main solution file
+
+### Dependencies and Hidden Requirements
+
+- **Local .NET SDK**: Use the version specified in global.json
+- **Package References**: Centrally managed via Directory.Packages.props
+- **ModelContextProtocol**: Core dependency for MCP implementation
+- **API Surface**: Public APIs should be stable; avoid breaking changes
+
+### MCP Server Specifics
+
+The server implements the Model Context Protocol (MCP) for integration with AI agents like Claude or Copilot. Key components include:
+
+- **Tools**: Various bookmark and folder management tools
+- **Resources**: Read-only access to Instapaper data
+- **Prompts**: Built-in prompts for common tasks
+
+### Common Validation Steps
+
+1. **Build Verification**: `dotnet build` should complete without errors
+2. **Package Generation**: `dotnet pack` verifies all packages can be created
+3. **Specific Tests**: Target individual test projects related to your changes
+4. **Integration Testing**: Test the MCP server with actual AI clients after changes
+
+## Quarantined tests
+
+- Tests that are flaky and don't fail deterministically can be marked with a custom attribute or skipped.
+- Such tests should be isolated and run separately.
+
+## Disabled tests
+
+- Tests that consistently fail due to known issues can be skipped with attributes.
+- Use for blocked tests, not flaky ones.
+
+## Outerloop tests
+
+- Long-running or resource-intensive tests should be marked and run separately.
+
+## Snapshot Testing with Verify
+
+- If using Verify for snapshot testing:
+- Snapshot files in `Snapshots` directories.
+- Accept changes with appropriate tools after updates.
+
+## Editing resources
+
+The `*.Designer.cs` files match `*.resx` files. Update both when changing resources.
+
+## Markdown files
+
+- No multiple consecutive blank lines.
+- Code blocks with triple backticks and language identifier.
+- Proper indentation for JSON.
+
+## Localization files
+
+- Do not manually translate localization files; use dedicated workflows.
+
+## Trust These Instructions
+
+These instructions are comprehensive. Only search for more if outdated or errors occur.

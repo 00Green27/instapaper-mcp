@@ -8,6 +8,7 @@ It is designed for **AI agents**, not for recreating the Instapaper UI.
 ---
 
 ## What This Is
+
 - A Model Context Protocol (MCP) server
 - A clean abstraction over Instapaper data
 - A toolset optimized for LLM reasoning
@@ -16,6 +17,7 @@ It is designed for **AI agents**, not for recreating the Instapaper UI.
 ---
 
 ## What This Is NOT
+
 - A full Instapaper client
 - A UI-focused API
 - A mirror of the official Instapaper feature set
@@ -26,13 +28,16 @@ It is designed for **AI agents**, not for recreating the Instapaper UI.
 ## Core Philosophy
 
 ### Agent-First Design
+
 This project assumes:
+
 - Agents reason in intents, not clicks
 - Fewer tools lead to better decisions
 - Bulk operations are the norm
 - Context size is a scarce resource
 
 Every design decision must reduce:
+
 - Tool selection ambiguity
 - Context pollution
 - Redundant concepts
@@ -41,73 +46,67 @@ Every design decision must reduce:
 
 ## Tools Overview
 
-### search_bookmarks
-Primary discovery tool.
+### Bookmark Management Tools
 
-- Acts as both list and search
-- Query is optional
-- Folder defaults to `unread`
-- Always limited
+#### list_bookmarks
 
----
+List or search bookmarks. Defaults to unread folder.
 
-### get_article_content
-Fetches article text for one or more bookmarks.
+- Optional search query
+- Optional folder ID to search in (unread, starred, archive, or a folder ID)
+- Maximum number of items to return (default 100)
 
-- Supports bulk by default
-- Designed for analysis, summarization, and highlighting
+#### add_bookmark
 
----
+Add a new bookmark or note.
 
-### add_bookmark
-Stores content for later use.
+- URL of the bookmark or note
+- Optional title and description
+- Optional folder ID to add to
+- Full HTML content of the page
+- Options for resolving redirects and archiving on add
 
-- Supports URLs and plain text notes
-- Optional metadata (title, description)
-- Folder assignment optional
+#### archive_bookmark / unarchive_bookmark
 
----
+Move bookmark to/from archive.
 
-### manage_bookmarks
-Universal state transition tool.
+- Single bookmark ID or list of bookmark IDs
 
-Actions:
-- archive
-- unarchive
-- delete
-- star
-- unstar
+#### mark_bookmark / unmark_bookmark
 
-Bulk-first by design.
+Mark/unmark bookmark as important.
 
----
+- Single bookmark ID
 
-### move_bookmarks
-Moves one or more bookmarks to a different folder.
+#### move_bookmarks / move_bookmark
 
----
+Move bookmarks to a different folder.
 
-### manage_folders
-Folder lifecycle management.
+- List of bookmark IDs to move and target folder ID
 
-Actions:
-- list
-- create
-- delete
+### Folder Management Tools
 
-No ordering concepts.
+#### list_folders
 
----
+List all user folders.
 
-### manage_highlights
-Highlight management for articles.
+#### create_folder
 
-Actions:
-- list
-- add
-- delete
+Create an organizational folder.
 
-Designed to support “second brain” workflows.
+- Title of the folder
+
+#### delete_folder
+
+Delete a folder.
+
+- Folder ID
+
+#### reorder_folders
+
+Re-order a user's folders.
+
+- Array of folder ID and position tuples
 
 ---
 
@@ -116,51 +115,59 @@ Designed to support “second brain” workflows.
 Resources expose Instapaper data in a read-only manner.
 
 Important rules:
+
 - All resources are limited by default
 - Large datasets must be explicitly requested
 - Context safety is a first-class concern
 
-Example:
-- `instapaper://highlights/all` enables cross-article knowledge analysis
+Available resources:
+
+- `instapaper://bookmarks/unread` - List of unread bookmarks
+- `instapaper://bookmarks/archive` - List of archived bookmarks
+- `instapaper://bookmarks/starred` - List of starred bookmarks
+- `instapaper://folders` - List of all user folders
+- `instapaper://bookmark/{id}` - Full text and metadata for specific bookmark
 
 ---
 
 ## Prompts
 
-This server is designed to work with higher-level prompts such as:
-- clean_up_suggestions
-- daily_briefing
-- research_mode
+The server provides several built-in prompts for common tasks:
 
-Prompts should guide agents toward:
-- decision-making
-- synthesis
-- extraction of meaning
+- `organize_reading_list` - Analyze and organize unread bookmarks into folders
+- `weekly_digest` - Generate summary of unread bookmarks from last 7 days
+- `recommend_next` - Suggest what to read next based on context
+- `research_mode` - Analyze bookmarks on a specific topic
+- `clean_up_suggestions` - Identify old or irrelevant bookmarks for archiving
 
 ---
 
 ## Design Constraints
+
 These constraints are intentional:
+
 - No progress tracking
 - No UI ordering
 - No redundant tools
 - No silent magic
 
 If you feel something is missing, ask:
-“Does an AI agent actually need this?”
+"Does an AI agent actually need this?"
 
 ---
 
 ## How to Run
 
 ### 1. Configuration
+
 Set your Instapaper API credentials using **User Secrets** (recommended for dev) or Environment Variables.
 
 #### Option A: Automatic Authentication (xAuth)
+
 If you provide your Instapaper credentials, the server will automatically exchange them for access tokens on the first request.
 
 ```bash
-cd src/InstapaperMcp.Api
+cd src/Instapaper.Mcp.Server
 dotnet user-secrets set "Instapaper:ConsumerKey" "your_app_key"
 dotnet user-secrets set "Instapaper:ConsumerSecret" "your_app_secret"
 dotnet user-secrets set "Instapaper:Username" "your_email"
@@ -168,10 +175,11 @@ dotnet user-secrets set "Instapaper:Password" "your_password"
 ```
 
 #### Option B: Manual Tokens (OAuth 1.0)
+
 If you already have your access tokens, you can set them directly:
 
 ```bash
-cd src/InstapaperMcp.Api
+cd src/Instapaper.Mcp.Server
 dotnet user-secrets set "Instapaper:ConsumerKey" "your_app_key"
 dotnet user-secrets set "Instapaper:ConsumerSecret" "your_app_secret"
 dotnet user-secrets set "Instapaper:AccessToken" "your_token"
@@ -179,7 +187,9 @@ dotnet user-secrets set "Instapaper:AccessTokenSecret" "your_token_secret"
 ```
 
 #### Environment Variables:
+
 The following environment variables are supported (compatible with Docker/CI):
+
 - `Instapaper__ConsumerKey`
 - `Instapaper__ConsumerSecret`
 - `Instapaper__Username`
@@ -188,31 +198,38 @@ The following environment variables are supported (compatible with Docker/CI):
 - `Instapaper__AccessTokenSecret`
 
 ### 2. Build
+
 ```bash
 dotnet build
 ```
 
 ### 3. Run
+
 The server communicates via `stdin` and `stdout` using JSON-RPC. For local development:
+
 ```bash
-dotnet run --project src/InstapaperMcp.Api --no-build -v quiet
+dotnet run --project src/Instapaper.Mcp.Server --no-build -v quiet
 ```
 
 ### 4. Integration with MCP Clients (Claude, Copilot, etc.)
-Add the following to your configuration file (e.g., `claude_desktop_config.json` or `config.json` for Copilot). 
+
+Add the following to your configuration file (e.g., `claude_desktop_config.json` or `config.json` for Copilot).
 **Note:** Use absolute paths to ensure the project can be located from any working directory.
 
 #### Using `dotnet run` (Development)
+
 ```json
 {
   "mcpServers": {
     "instapaper": {
       "command": "dotnet",
       "args": [
-        "run", 
-        "--project", "D:/Dev/personal/instapaper-mcp/src/InstapaperMcp.Api/InstapaperMcp.Api.csproj", 
-        "--no-build", 
-        "-v", "quiet"
+        "run",
+        "--project",
+        "D:/Dev/Instapaper.Mcp.Server",
+        "--no-build",
+        "-v",
+        "quiet"
       ],
       "env": {
         "Instapaper__ConsumerKey": "...",
@@ -226,24 +243,18 @@ Add the following to your configuration file (e.g., `claude_desktop_config.json`
 ```
 
 #### Using published DLL (Production - Recommended)
-1. Publish the project: `dotnet publish src/InstapaperMcp.Api -c Release -o ./publish`
+
+1. Publish the project: `dotnet publish src/Instapaper.Mcp.Server -c Release -o ./publish`
 2. Use the DLL directly:
+
 ```json
 {
   "mcpServers": {
     "instapaper": {
       "command": "dotnet",
-      "args": ["D:/Dev/personal/instapaper-mcp/publish/InstapaperMcp.Api.dll"],
+      "args": ["D:/McpServers/Instapaper.Mcp.Server.dll"],
       "env": { ... }
     }
   }
 }
 ```
-
----
-
-## Status
-This project is evolving.
-Expect iteration, tightening of rules, and removal of features that add noise.
-
-Clarity beats completeness.
