@@ -2,16 +2,26 @@ using System.ComponentModel;
 using Instapaper.Mcp.Server;
 using ModelContextProtocol.Server;
 
+/// <summary>
+/// MCP tools for managing bookmarks in Instapaper.
+/// </summary>
 [McpServerToolType]
 public sealed class InstapaperBookmarkTools
 {
   private readonly IInstapaperClient _instapaperClient;
 
+  /// <summary>
+  /// Initializes a new instance of the InstapaperBookmarkTools class.
+  /// </summary>
+  /// <param name="instapaperClient">The Instapaper API client.</param>
   public InstapaperBookmarkTools(IInstapaperClient instapaperClient)
   {
     _instapaperClient = instapaperClient;
   }
 
+  /// <summary>
+  /// Lists or searches bookmarks.
+  /// </summary>
   [McpServerTool(Name = "list_bookmarks")]
   [Description("List or search bookmarks. Defaults to unread folder.")]
   public async Task<IReadOnlyCollection<Bookmark>> ListBookmarksAsync(
@@ -27,6 +37,9 @@ public sealed class InstapaperBookmarkTools
     return await _instapaperClient.ListBookmarksAsync(query, folderId, parseLimit, cancellationToken);
   }
 
+  /// <summary>
+  /// Adds a new bookmark or note.
+  /// </summary>
   [McpServerTool(Name = "add_bookmark")]
   [Description("Add a new bookmark or note.")]
   public async Task<Bookmark> AddBookmarkAsync(
@@ -49,6 +62,9 @@ public sealed class InstapaperBookmarkTools
   CancellationToken cancellationToken) =>
 await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, content, resolveFinalUrl, archiveOnAdd, tags, cancellationToken);
 
+  /// <summary>
+  /// Moves multiple bookmarks to a different folder.
+  /// </summary>
   [McpServerTool(Name = "move_bookmarks")]
   [Description("Move bookmarks to a different folder.")]
   public async Task<IReadOnlyCollection<Bookmark>> MoveBookmarksAsync(
@@ -59,6 +75,9 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     CancellationToken cancellationToken) =>
     await _instapaperClient.MoveBookmarksAsync(bookmarkIds, folderId, cancellationToken);
 
+  /// <summary>
+  /// Moves a single bookmark to a different folder.
+  /// </summary>
   [McpServerTool(Name = "move_bookmark")]
   [Description("Move bookmarks to a different folder.")]
   public async Task<Bookmark> MoveBookmarkAsync(
@@ -69,6 +88,9 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     CancellationToken cancellationToken) =>
     await _instapaperClient.MoveBookmarkAsync(bookmarkId, folderId, cancellationToken);
 
+  /// <summary>
+  /// Archives a single bookmark.
+  /// </summary>
   [McpServerTool(Name = "archive_bookmark")]
   [Description("Move bookmark to archive.")]
   public async Task<Bookmark> ArchiveBookmarkAsync(
@@ -77,6 +99,9 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     CancellationToken cancellationToken) =>
     await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Archive, cancellationToken);
 
+  /// <summary>
+  /// Archives multiple bookmarks.
+  /// </summary>
   [McpServerTool(Name = "archive_bookmarks")]
   [Description("Move bookmark to archive.")]
   public async Task<IReadOnlyCollection<Bookmark>> ArchiveBookmarksAsync(
@@ -85,6 +110,9 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     CancellationToken cancellationToken) =>
     await _instapaperClient.ManageBookmarksAsync(bookmarkIds, BookmarkAction.Archive, cancellationToken);
 
+  /// <summary>
+  /// Restores a bookmark from archive.
+  /// </summary>
   [McpServerTool(Name = "unarchive_bookmark")]
   [Description("Restore bookmark from archive.")]
   public async Task<Bookmark> UnarchiveBookmarkAsync(
@@ -93,6 +121,9 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     CancellationToken cancellationToken) =>
     await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Unarchive, cancellationToken);
 
+  /// <summary>
+  /// Marks a bookmark as important (stars it).
+  /// </summary>
   [McpServerTool(Name = "mark_bookmark")]
   [Description("Mark bookmark as important.")]
   public async Task<Bookmark> MarkBookmarkAsync(
@@ -101,6 +132,9 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     CancellationToken cancellationToken) =>
     await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Mark, cancellationToken);
 
+  /// <summary>
+  /// Unmarks a bookmark as important (unstars it).
+  /// </summary>
   [McpServerTool(Name = "unmark_bookmark")]
   [Description("Unmark bookmark as important.")]
   public async Task<Bookmark> UnmarkBookmarkAsync(

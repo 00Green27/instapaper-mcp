@@ -4,8 +4,25 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Instapaper.Mcp.Server;
 
+/// <summary>
+/// Extension methods for configuring Instapaper services in dependency injection.
+/// </summary>
 public static class InstapaperServiceCollectionExtensions
 {
+    /// <summary>
+    /// Adds Instapaper API client and related services to the dependency injection container.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configuration">The application configuration.</param>
+    /// <returns>The service collection for method chaining.</returns>
+    /// <remarks>
+    /// This method registers:
+    /// - InstapaperOptions with configuration binding and validation
+    /// - IOAuth1SignatureGenerator implementation
+    /// - HttpClient for IInstapaperClient
+    ///
+    /// Configuration is validated at startup to ensure required credentials are present.
+    /// </remarks>
     public static IServiceCollection AddInstapaper(
         this IServiceCollection services,
         IConfiguration configuration)
