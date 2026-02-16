@@ -49,7 +49,7 @@ public sealed class InstapaperFolderTools
     /// Deletes a folder.
     /// </summary>
     [McpServerTool(Name = "delete_folder")]
-    [Description("Delete folder.")]
+    [Description("Deletes a folder.")]
     public async Task<bool> DeleteFolderAsync(long folderId, CancellationToken cancellationToken) =>
       await _instapaperClient.DeleteFolderAsync(folderId, cancellationToken);
 
@@ -57,7 +57,7 @@ public sealed class InstapaperFolderTools
     /// Lists all folders.
     /// </summary>
     [McpServerTool(Name = "list_folders")]
-    [Description("List folders.")]
+    [Description("Lists all folders.")]
     public async Task<IReadOnlyCollection<Folder>> ListFolderAsync(CancellationToken cancellationToken) =>
       await _instapaperClient.ListFoldersAsync(cancellationToken);
 
