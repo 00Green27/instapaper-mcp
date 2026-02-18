@@ -164,4 +164,15 @@ await _instapaperClient.AddBookmarkAsync(url, title, description, folderId, cont
     long bookmarkId,
     CancellationToken cancellationToken) =>
     await _instapaperClient.ManageBookmarksAsync(bookmarkId, BookmarkAction.Unmark, cancellationToken);
+
+  /// <summary>
+  /// Retrieves the full HTML content of a bookmark.
+  /// </summary>
+  [McpServerTool(Name = "get_bookmark_content")]
+  [Description("Retrieves the full HTML content of a bookmark.")]
+  public async Task<string> GetBookmarkContentAsync(
+    [Description("The ID of the bookmark.")]
+    long bookmarkId,
+    CancellationToken cancellationToken) =>
+    await _instapaperClient.GetBookmarkContentAsync(bookmarkId, cancellationToken);
 }

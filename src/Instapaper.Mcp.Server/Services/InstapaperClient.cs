@@ -282,14 +282,20 @@ public sealed class InstapaperClient : IInstapaperClient
         await SignAsync(request, parameters, ct);
 
         using var response = await _httpClient.SendAsync(request, ct);
-        var stream = await response.Content.ReadAsStreamAsync(ct);
 
         if (!response.IsSuccessStatusCode)
         {
-            var error = JsonSerializer.Deserialize(stream, InstapaperJsonContext.Default.Error);
+            var errorStream = await response.Content.ReadAsStreamAsync(ct);
+            var error = JsonSerializer.Deserialize(errorStream, InstapaperJsonContext.Default.Error);
             throw InstapaperApiException.FromResponse(response, error);
         }
 
+        if (typeof(T) == typeof(string))
+        {
+            return (T)(object)await response.Content.ReadAsStringAsync(ct);
+        }
+
+        var stream = await response.Content.ReadAsStreamAsync(ct);
         T? result = (T?)JsonSerializer.Deserialize(stream, typeof(List<InstapaperItem>), InstapaperJsonContext.Default);
         return result ?? throw new InvalidOperationException($"Empty response deserializing {typeof(T).Name}");
     }
