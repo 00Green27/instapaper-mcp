@@ -107,7 +107,6 @@ public sealed class InstapaperClient : IInstapaperClient
         List<string>? tags = null,
         CancellationToken ct = default)
     {
-        // Валидация входных данных
         if (string.IsNullOrWhiteSpace(url) && string.IsNullOrWhiteSpace(content))
         {
             throw new ArgumentException("The URL or content must be specified", nameof(url));
@@ -393,7 +392,6 @@ public sealed class InstapaperClient : IInstapaperClient
         {
             _logger.LogWarning("API error: {StatusCode} {ReasonPhrase}", response.StatusCode, response.ReasonPhrase);
 
-            // При 401 ошибке очищаем кэш токенов и пробуем снова один раз
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             {
                 _logger.LogDebug("Received a 401 error, clearing the token cache and trying again");
@@ -487,14 +485,12 @@ public sealed class InstapaperClient : IInstapaperClient
 
     private async Task EnsureAuthenticatedAsync(CancellationToken ct)
     {
-        // Проверяем есть ли валидный токен в кэше
         if (_tokenExpiry.HasValue && _tokenExpiry.Value > _timeProvider.GetUtcNow()
             && !string.IsNullOrEmpty(_cachedToken))
         {
             return;
         }
 
-        // Пытаемся использовать токен из опций (если был предоставлен заранее)
         if (!string.IsNullOrEmpty(_options.AccessToken) && !string.IsNullOrEmpty(_options.AccessTokenSecret))
         {
             _cachedToken = _options.AccessToken;
@@ -507,7 +503,6 @@ public sealed class InstapaperClient : IInstapaperClient
         await _lock.WaitAsync(ct);
         try
         {
-            // Повторная проверка после получения блокировки
             if (_tokenExpiry.HasValue && _tokenExpiry.Value > _timeProvider.GetUtcNow()
                 && !string.IsNullOrEmpty(_cachedToken))
             {
