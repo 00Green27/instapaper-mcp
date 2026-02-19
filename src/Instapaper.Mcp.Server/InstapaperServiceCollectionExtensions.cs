@@ -1,8 +1,10 @@
 using Instapaper.Mcp.Server.Configuration;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
+
 using Polly;
 
 namespace Instapaper.Mcp.Server;
@@ -37,9 +39,9 @@ public static class InstapaperServiceCollectionExtensions
                     !string.IsNullOrWhiteSpace(o.ConsumerSecret),
                 "Instapaper ConsumerKey/ConsumerSecret are required")
             .Validate(o =>
-                    !string.IsNullOrWhiteSpace(o.Username) &&
-                    !string.IsNullOrWhiteSpace(o.Password),
-                "Instapaper Username/Password are required")
+                    (!string.IsNullOrWhiteSpace(o.Username) && !string.IsNullOrWhiteSpace(o.Password)) ||
+                    (!string.IsNullOrWhiteSpace(o.AccessToken) && !string.IsNullOrWhiteSpace(o.AccessTokenSecret)),
+                "Either Instapaper Username/Password or AccessToken/AccessTokenSecret are required")
             .ValidateOnStart();
 
         services.AddSingleton(TimeProvider.System);
@@ -52,18 +54,18 @@ public static class InstapaperServiceCollectionExtensions
         .AddStandardResilienceHandler(config =>
         {
             // Retry settings
-            config.Retry.ShouldHandle = args => 
+            config.Retry.ShouldHandle = args =>
                 new ValueTask<bool>((args.Outcome.Exception is HttpRequestException) ||
-                                   (args.Outcome.Result is HttpResponseMessage r && 
-                                    ((int)r.StatusCode >= 500 || 
+                                   (args.Outcome.Result is HttpResponseMessage r &&
+                                    ((int)r.StatusCode >= 500 ||
                                      r.StatusCode == System.Net.HttpStatusCode.RequestTimeout ||
                                      r.StatusCode == System.Net.HttpStatusCode.TooManyRequests)));
             config.Retry.MaxRetryAttempts = 3;
             config.Retry.Delay = TimeSpan.FromSeconds(1);
             config.Retry.BackoffType = DelayBackoffType.Exponential;
-            
+
             // Circuit breaker settings
-            config.CircuitBreaker.ShouldHandle = args => 
+            config.CircuitBreaker.ShouldHandle = args =>
                 new ValueTask<bool>((args.Outcome.Exception is HttpRequestException) ||
                                    (args.Outcome.Result is HttpResponseMessage r && (int)r.StatusCode >= 500));
             config.CircuitBreaker.FailureRatio = 0.5;

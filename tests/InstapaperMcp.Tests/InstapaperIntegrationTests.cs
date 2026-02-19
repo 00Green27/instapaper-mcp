@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Instapaper.Mcp.Server.Tests;
 

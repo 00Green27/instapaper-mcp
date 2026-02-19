@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text;
-using Microsoft.Extensions.Logging;
+
 using Instapaper.Mcp.Server.Tests.TestHelpers;
+
+using Microsoft.Extensions.Logging;
 
 namespace Instapaper.Mcp.Server.Tests;
 

@@ -1,7 +1,9 @@
 ﻿using Instapaper.Mcp.Server;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+
 using ModelContextProtocol.Protocol;
 
 var builder = Host.CreateApplicationBuilder(args);

@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text.Json;
+
 using Instapaper.Mcp.Server.Configuration;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
