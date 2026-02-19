@@ -1,6 +1,9 @@
 using Instapaper.Mcp.Server.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
+using Microsoft.Extensions.Logging;
+using Polly;
 
 namespace Instapaper.Mcp.Server;
 
@@ -19,7 +22,7 @@ public static class InstapaperServiceCollectionExtensions
     /// This method registers:
     /// - InstapaperOptions with configuration binding and validation
     /// - IOAuth1SignatureGenerator implementation
-    /// - HttpClient for IInstapaperClient
+    /// - HttpClient for IInstapaperClient with resilience policies
     ///
     /// Configuration is validated at startup to ensure required credentials are present.
     /// </remarks>
@@ -45,7 +48,28 @@ public static class InstapaperServiceCollectionExtensions
         services.AddHttpClient<IInstapaperClient, InstapaperClient>(c =>
         {
             c.BaseAddress = new Uri("https://www.instapaper.com/api/1/");
-            c.Timeout = TimeSpan.FromSeconds(30);
+        })
+        .AddStandardResilienceHandler(config =>
+        {
+            // Retry settings
+            config.Retry.ShouldHandle = args => 
+                new ValueTask<bool>((args.Outcome.Exception is HttpRequestException) ||
+                                   (args.Outcome.Result is HttpResponseMessage r && 
+                                    ((int)r.StatusCode >= 500 || 
+                                     r.StatusCode == System.Net.HttpStatusCode.RequestTimeout ||
+                                     r.StatusCode == System.Net.HttpStatusCode.TooManyRequests)));
+            config.Retry.MaxRetryAttempts = 3;
+            config.Retry.Delay = TimeSpan.FromSeconds(1);
+            config.Retry.BackoffType = DelayBackoffType.Exponential;
+            
+            // Circuit breaker settings
+            config.CircuitBreaker.ShouldHandle = args => 
+                new ValueTask<bool>((args.Outcome.Exception is HttpRequestException) ||
+                                   (args.Outcome.Result is HttpResponseMessage r && (int)r.StatusCode >= 500));
+            config.CircuitBreaker.FailureRatio = 0.5;
+            config.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+            config.CircuitBreaker.MinimumThroughput = 5;
+            config.CircuitBreaker.BreakDuration = TimeSpan.FromMinutes(1);
         });
 
         return services;

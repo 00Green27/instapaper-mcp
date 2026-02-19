@@ -103,6 +103,12 @@ public sealed class InstapaperClient : IInstapaperClient
         List<string>? tags = null,
         CancellationToken ct = default)
     {
+        // Валидация входных данных
+        if (string.IsNullOrWhiteSpace(url) && string.IsNullOrWhiteSpace(content))
+        {
+            throw new ArgumentException("The URL or content must be specified", nameof(url));
+        }
+
         var parameters = new Dictionary<string, string>();
         if (url != null)
             parameters["url"] = url;
@@ -111,7 +117,11 @@ public sealed class InstapaperClient : IInstapaperClient
         if (description != null)
             parameters["description"] = description;
         if (folderId.HasValue)
+        {
+            if (folderId.Value <= 0)
+                throw new ArgumentOutOfRangeException(nameof(folderId), "FolderId must be a positive number");
             parameters["folder_id"] = folderId.Value.ToString();
+        }
         if (content != null)
             parameters["content"] = content;
         if (tags?.Any() == true)
@@ -130,11 +140,15 @@ public sealed class InstapaperClient : IInstapaperClient
             parameters,
             ct);
 
-        return items.OfType<Bookmark>().First();
+        var bookmark = items.OfType<Bookmark>().FirstOrDefault();
+        return bookmark ?? throw InstapaperApiException.Create("Failed to create a bookmark: The API did not return the expected response");
     }
 
     public async Task<string> GetBookmarkContentAsync(long bookmarkId, CancellationToken ct = default)
     {
+        if (bookmarkId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(bookmarkId), "The BookmarkId must be a positive number");
+
         var parameters = new Dictionary<string, string>
         {
             ["bookmark_id"] = bookmarkId.ToString()
@@ -149,6 +163,9 @@ public sealed class InstapaperClient : IInstapaperClient
 
     public async Task<IReadOnlyDictionary<long, string>> GetBookmarkContentsAsync(IEnumerable<long> bookmarkIds, CancellationToken ct = default)
     {
+        if (bookmarkIds == null)
+            throw new ArgumentNullException(nameof(bookmarkIds));
+
         var tasks = bookmarkIds.Select(async id => (id, content: await GetBookmarkContentAsync(id, ct)));
         var results = await Task.WhenAll(tasks);
         return new Dictionary<long, string>(results.ToDictionary(x => x.id, x => x.content));
@@ -156,6 +173,9 @@ public sealed class InstapaperClient : IInstapaperClient
 
     public async Task<Bookmark> ManageBookmarksAsync(long bookmarkId, BookmarkAction action, CancellationToken ct = default)
     {
+        if (bookmarkId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(bookmarkId), "The BookmarkId must be a positive number");
+
         string path = action switch
         {
             BookmarkAction.Archive => "bookmarks/archive",
@@ -173,7 +193,8 @@ public sealed class InstapaperClient : IInstapaperClient
 
         var items = await SendAsync<List<InstapaperItem>>(HttpMethod.Post, path, parameters, ct);
 
-        return items.OfType<Bookmark>().First();
+        var bookmark = items.OfType<Bookmark>().FirstOrDefault();
+        return bookmark ?? throw InstapaperApiException.Create($"Failed to perform {action} on the bookmark: The API did not return the expected response");
     }
 
     public async Task<IReadOnlyCollection<Bookmark>> ManageBookmarksAsync(IEnumerable<long> bookmarkIds, BookmarkAction action, CancellationToken ct = default)
@@ -184,6 +205,11 @@ public sealed class InstapaperClient : IInstapaperClient
 
     public async Task<Bookmark> MoveBookmarkAsync(long bookmarkId, long folderId, CancellationToken ct = default)
     {
+        if (bookmarkId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(bookmarkId), "The BookmarkId must be a positive number");
+        if (folderId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(folderId), "FolderId must be a positive number");
+
         var parameters = new Dictionary<string, string>
         {
             ["bookmark_id"] = bookmarkId.ToString(),
@@ -196,7 +222,10 @@ public sealed class InstapaperClient : IInstapaperClient
              parameters,
              ct);
 
-        return items.OfType<Bookmark>().First() with { FolderId = folderId };
+        var bookmark = items.OfType<Bookmark>().FirstOrDefault();
+        return bookmark != null
+            ? bookmark with { FolderId = folderId }
+            : throw InstapaperApiException.Create("Couldn't move bookmark: API didn't return expected response");
     }
 
     public async Task<IReadOnlyCollection<Bookmark>> MoveBookmarksAsync(IEnumerable<long> bookmarkIds, long folderId, CancellationToken ct = default)
@@ -228,6 +257,9 @@ public sealed class InstapaperClient : IInstapaperClient
 
     public async Task<Folder> CreateFolderAsync(string title, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(title))
+            throw new ArgumentException("The folder name cannot be empty", nameof(title));
+
         var parameters = new Dictionary<string, string>
         {
             ["title"] = title
@@ -239,11 +271,15 @@ public sealed class InstapaperClient : IInstapaperClient
             parameters,
             ct);
 
-        return items.OfType<Folder>().First();
+        var folder = items.OfType<Folder>().FirstOrDefault();
+        return folder ?? throw InstapaperApiException.Create("Couldn't create folder: API didn't return expected response");
     }
 
     public async Task<bool> DeleteFolderAsync(long folderId, CancellationToken ct = default)
     {
+        if (folderId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(folderId), "FolderId must be a positive number");
+
         var parameters = new Dictionary<string, string>
         {
             ["folder_id"] = folderId.ToString()
