@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Instapaper.Mcp.Server.Configuration;
@@ -41,8 +42,8 @@ public sealed class InstapaperClient : IInstapaperClient
         int? limit,
         CancellationToken ct = default)
     {
-        const int MaxApiLimit = 500;
-        const int MaxPages = 10;
+        var maxApiLimit = _options.MaxApiLimit > 0 ? _options.MaxApiLimit : 500;
+        var maxPages = _options.MaxPages > 0 ? _options.MaxPages : 10;
 
         var parameters = new Dictionary<string, string>();
         if (!string.IsNullOrEmpty(folderId))
@@ -53,13 +54,13 @@ public sealed class InstapaperClient : IInstapaperClient
         if (!limit.HasValue || limit <= 0)
             limit = DefaultLimit;
 
-        int effectiveLimit = Math.Min(limit.Value, MaxApiLimit * MaxPages);
+        int effectiveLimit = Math.Min(limit.Value, maxApiLimit * maxPages);
 
         var results = new List<Bookmark>();
-        var seenIds = new List<string>();
-        for (int page = 0; page < MaxPages; page++)
+        var seenIds = new HashSet<long>();
+        for (int page = 0; page < maxPages; page++)
         {
-            parameters["limit"] = MaxApiLimit.ToString();
+            parameters["limit"] = maxApiLimit.ToString();
 
             if (seenIds.Count > 0)
             {
@@ -77,7 +78,10 @@ public sealed class InstapaperClient : IInstapaperClient
 
             if (newBookmarks.Length == 0) break;
 
-            seenIds.AddRange(newBookmarks.Select(b => b.BookmarkId.ToString()));
+            foreach (var bookmark in newBookmarks)
+            {
+                seenIds.Add(bookmark.BookmarkId);
+            }
 
             var candidates = lowerQuery is not null
                 ? newBookmarks.Where(b =>
@@ -166,9 +170,26 @@ public sealed class InstapaperClient : IInstapaperClient
         if (bookmarkIds == null)
             throw new ArgumentNullException(nameof(bookmarkIds));
 
-        var tasks = bookmarkIds.Select(async id => (id, content: await GetBookmarkContentAsync(id, ct)));
-        var results = await Task.WhenAll(tasks);
-        return new Dictionary<long, string>(results.ToDictionary(x => x.id, x => x.content));
+        var bookmarkIdsArray = bookmarkIds.ToArray();
+        var results = new ConcurrentDictionary<long, string>();
+
+        using var semaphore = new SemaphoreSlim(5);
+        var tasks = bookmarkIdsArray.Select(async id =>
+        {
+            await semaphore.WaitAsync(ct);
+            try
+            {
+                var content = await GetBookmarkContentAsync(id, ct);
+                results[id] = content;
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        return results;
     }
 
     public async Task<Bookmark> ManageBookmarksAsync(long bookmarkId, BookmarkAction action, CancellationToken ct = default)
@@ -199,8 +220,29 @@ public sealed class InstapaperClient : IInstapaperClient
 
     public async Task<IReadOnlyCollection<Bookmark>> ManageBookmarksAsync(IEnumerable<long> bookmarkIds, BookmarkAction action, CancellationToken ct = default)
     {
-        var tasks = bookmarkIds.Select(async id => await ManageBookmarksAsync(id, action, ct));
-        return await Task.WhenAll(tasks);
+        if (bookmarkIds == null)
+            throw new ArgumentNullException(nameof(bookmarkIds));
+
+        var bookmarkIdsArray = bookmarkIds.ToArray();
+        var results = new ConcurrentBag<Bookmark>();
+
+        using var semaphore = new SemaphoreSlim(5);
+        var tasks = bookmarkIdsArray.Select(async id =>
+        {
+            await semaphore.WaitAsync(ct);
+            try
+            {
+                var bookmark = await ManageBookmarksAsync(id, action, ct);
+                results.Add(bookmark);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        return results.ToArray();
     }
 
     public async Task<Bookmark> MoveBookmarkAsync(long bookmarkId, long folderId, CancellationToken ct = default)
@@ -230,8 +272,29 @@ public sealed class InstapaperClient : IInstapaperClient
 
     public async Task<IReadOnlyCollection<Bookmark>> MoveBookmarksAsync(IEnumerable<long> bookmarkIds, long folderId, CancellationToken ct = default)
     {
-        var tasks = bookmarkIds.Select(async id => await MoveBookmarkAsync(id, folderId, ct));
-        return await Task.WhenAll(tasks);
+        if (bookmarkIds == null)
+            throw new ArgumentNullException(nameof(bookmarkIds));
+
+        var bookmarkIdsArray = bookmarkIds.ToArray();
+        var results = new ConcurrentBag<Bookmark>();
+
+        using var semaphore = new SemaphoreSlim(5);
+        var tasks = bookmarkIdsArray.Select(async id =>
+        {
+            await semaphore.WaitAsync(ct);
+            try
+            {
+                var bookmark = await MoveBookmarkAsync(id, folderId, ct);
+                results.Add(bookmark);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        return results.ToArray();
     }
 
     public async Task<IReadOnlyCollection<Folder>> ListFoldersAsync(CancellationToken ct = default)
