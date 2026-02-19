@@ -9,25 +9,30 @@ namespace Instapaper.Mcp.Server;
 public sealed class InstapaperClient : IInstapaperClient
 {
     private const int DefaultLimit = 100;
+    private static readonly TimeSpan TokenTtl = TimeSpan.FromHours(1);
 
     private readonly InstapaperOptions _options;
     private readonly HttpClient _httpClient;
     private readonly IOAuth1SignatureGenerator _signatureGenerator;
     private readonly ILogger<InstapaperClient> _logger;
+    private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private static string? _cachedToken;
-    private static string? _cachedTokenSecret;
+    private string? _cachedToken;
+    private string? _cachedTokenSecret;
+    private DateTimeOffset? _tokenExpiry;
 
     public InstapaperClient(
         HttpClient httpClient,
         IOAuth1SignatureGenerator signatureGenerator,
         IOptions<InstapaperOptions> options,
-        ILogger<InstapaperClient> logger)
+        ILogger<InstapaperClient> logger,
+        TimeProvider timeProvider)
     {
         _httpClient = httpClient;
         _signatureGenerator = signatureGenerator;
         _options = options.Value;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     public async Task<IReadOnlyCollection<Bookmark>> ListBookmarksAsync(
@@ -271,6 +276,8 @@ public sealed class InstapaperClient : IInstapaperClient
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, Dictionary<string, string>? parameters, CancellationToken ct)
     {
+        _logger.LogDebug("Request: {Method} {Path}", method, path);
+
         using var request = new HttpRequestMessage(method, path);
         request.RequestUri = new Uri(_httpClient.BaseAddress!, request.RequestUri!);
 
@@ -285,10 +292,54 @@ public sealed class InstapaperClient : IInstapaperClient
 
         if (!response.IsSuccessStatusCode)
         {
+            _logger.LogWarning("API error: {StatusCode} {ReasonPhrase}", response.StatusCode, response.ReasonPhrase);
+
+            // При 401 ошибке очищаем кэш токенов и пробуем снова один раз
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger.LogDebug("Received a 401 error, clearing the token cache and trying again");
+                await ClearTokenCacheAsync(ct);
+
+                // Повторяем запрос с новыми токенами
+                request.Dispose();
+                using var retryRequest = new HttpRequestMessage(method, path);
+                retryRequest.RequestUri = new Uri(_httpClient.BaseAddress!, request.RequestUri!);
+
+                if (parameters is not null)
+                {
+                    retryRequest.Content = new FormUrlEncodedContent(parameters);
+                }
+
+                await SignAsync(retryRequest, parameters, ct);
+
+                using var retryResponse = await _httpClient.SendAsync(retryRequest, ct);
+
+                if (!retryResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Repeated API error: {StatusCode} {ReasonPhrase}", retryResponse.StatusCode, retryResponse.ReasonPhrase);
+                    var retryErrorStream = await retryResponse.Content.ReadAsStreamAsync(ct);
+                    var retryError = JsonSerializer.Deserialize(retryErrorStream, InstapaperJsonContext.Default.Error);
+                    throw InstapaperApiException.FromResponse(retryResponse, retryError);
+                }
+
+                _logger.LogDebug("Successful response after re-authentication: {StatusCode}", retryResponse.StatusCode);
+
+                if (typeof(T) == typeof(string))
+                {
+                    return (T)(object)await retryResponse.Content.ReadAsStringAsync(ct);
+                }
+
+                var retryStream = await retryResponse.Content.ReadAsStreamAsync(ct);
+                T? retryResult = (T?)JsonSerializer.Deserialize(retryStream, typeof(List<InstapaperItem>), InstapaperJsonContext.Default);
+                return retryResult ?? throw new InvalidOperationException($"Empty response deserializing {typeof(T).Name}");
+            }
+
             var errorStream = await response.Content.ReadAsStreamAsync(ct);
             var error = JsonSerializer.Deserialize(errorStream, InstapaperJsonContext.Default.Error);
             throw InstapaperApiException.FromResponse(response, error);
         }
+
+        _logger.LogDebug("Successful response: {StatusCode}", response.StatusCode);
 
         if (typeof(T) == typeof(string))
         {
@@ -298,6 +349,22 @@ public sealed class InstapaperClient : IInstapaperClient
         var stream = await response.Content.ReadAsStreamAsync(ct);
         T? result = (T?)JsonSerializer.Deserialize(stream, typeof(List<InstapaperItem>), InstapaperJsonContext.Default);
         return result ?? throw new InvalidOperationException($"Empty response deserializing {typeof(T).Name}");
+    }
+
+    private async Task ClearTokenCacheAsync(CancellationToken ct)
+    {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            _cachedToken = null;
+            _cachedTokenSecret = null;
+            _tokenExpiry = null;
+            _logger.LogDebug("The token cache has been cleared");
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     private async Task SignAsync(HttpRequestMessage request, Dictionary<string, string>? parameters,
@@ -315,16 +382,38 @@ public sealed class InstapaperClient : IInstapaperClient
             parameters);
 
         request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", header[6..]);
+
+        _logger.LogTrace("Added the OAuth authorization header");
     }
 
     private async Task EnsureAuthenticatedAsync(CancellationToken ct)
     {
-        if (!string.IsNullOrEmpty(_cachedToken ?? _options.AccessToken)) return;
+        // Проверяем есть ли валидный токен в кэше
+        if (_tokenExpiry.HasValue && _tokenExpiry.Value > _timeProvider.GetUtcNow()
+            && !string.IsNullOrEmpty(_cachedToken))
+        {
+            return;
+        }
+
+        // Пытаемся использовать токен из опций (если был предоставлен заранее)
+        if (!string.IsNullOrEmpty(_options.AccessToken) && !string.IsNullOrEmpty(_options.AccessTokenSecret))
+        {
+            _cachedToken = _options.AccessToken;
+            _cachedTokenSecret = _options.AccessTokenSecret;
+            _tokenExpiry = _timeProvider.GetUtcNow() + TokenTtl;
+            _logger.LogDebug("A pre-configured access token is used");
+            return;
+        }
 
         await _lock.WaitAsync(ct);
         try
         {
-            if (!string.IsNullOrEmpty(_cachedToken)) return;
+            // Повторная проверка после получения блокировки
+            if (_tokenExpiry.HasValue && _tokenExpiry.Value > _timeProvider.GetUtcNow()
+                && !string.IsNullOrEmpty(_cachedToken))
+            {
+                return;
+            }
 
             var parameters = new Dictionary<string, string>
             {
@@ -350,6 +439,7 @@ public sealed class InstapaperClient : IInstapaperClient
 
             request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader[6..]);
 
+            _logger.LogDebug("Requesting a new access token via xAuth");
             var response = await _httpClient.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
 
@@ -360,6 +450,9 @@ public sealed class InstapaperClient : IInstapaperClient
 
             _cachedToken = Uri.UnescapeDataString(parts["oauth_token"]);
             _cachedTokenSecret = Uri.UnescapeDataString(parts["oauth_token_secret"]);
+            _tokenExpiry = _timeProvider.GetUtcNow() + TokenTtl;
+
+            _logger.LogDebug("Access token successfully received, lifetime: {Expiry}", _tokenExpiry.Value);
         }
         finally
         {

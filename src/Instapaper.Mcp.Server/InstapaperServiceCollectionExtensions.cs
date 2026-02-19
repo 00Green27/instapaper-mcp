@@ -45,6 +45,7 @@ public static class InstapaperServiceCollectionExtensions
         services.AddHttpClient<IInstapaperClient, InstapaperClient>(c =>
         {
             c.BaseAddress = new Uri("https://www.instapaper.com/api/1/");
+            c.Timeout = TimeSpan.FromSeconds(30);
         });
 
         return services;

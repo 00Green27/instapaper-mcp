@@ -85,7 +85,8 @@ public static class TestClients
         });
 
         var logger = LoggerFactory.Create(_ => { }).CreateLogger<InstapaperClient>();
+        var timeProvider = TimeProvider.System;
 
-        return new InstapaperClient(httpClient, new FakeSignatureGenerator(), options, logger);
+        return new InstapaperClient(httpClient, new FakeSignatureGenerator(), options, logger, timeProvider);
     }
 }

@@ -7,7 +7,12 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 
 var builder = Host.CreateApplicationBuilder(args);
-builder.Logging.AddConsole(consoleLogOptions => { consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace; });
+
+builder.Logging.AddConsole(consoleLogOptions =>
+{
+    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Information;
+});
+
 builder.Services
     .AddInstapaper(builder.Configuration)
     .AddMcpServer(options =>
