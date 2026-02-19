@@ -5,6 +5,9 @@ A minimal, agent-first MCP server for interacting with Instapaper.
 This project is intentionally opinionated.
 It is designed for **AI agents**, not for recreating the Instapaper UI.
 
+[![CI](https://github.com/00Green27/instapaper-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/00Green27/instapaper-mcp/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 ---
 
 ## What This Is
@@ -258,3 +261,119 @@ Add the following to your configuration file (e.g., `claude_desktop_config.json`
   }
 }
 ```
+
+### 5. Running with Docker
+
+#### Build the image:
+
+```bash
+docker build -t instapaper-mcp:latest .
+```
+
+#### Run the container:
+
+```bash
+docker run -d \
+  --name instapaper-mcp \
+  -e Instapaper__ConsumerKey="your_key" \
+  -e Instapaper__ConsumerSecret="your_secret" \
+  -e Instapaper__AccessToken="your_token" \
+  -e Instapaper__AccessTokenSecret="your_secret" \
+  instapaper-mcp:latest
+```
+
+#### Using Docker Compose:
+
+```bash
+# Create .env file with your credentials
+cat > .env << EOF
+INSTAPAPER_CONSUMER_KEY=your_key
+INSTAPAPER_CONSUMER_SECRET=your_secret
+INSTAPAPER_ACCESS_TOKEN=your_token
+INSTAPAPER_ACCESS_TOKEN_SECRET=your_secret
+EOF
+
+# Start the service
+docker-compose up -d
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### 401 Unauthorized
+
+- Verify your access tokens are correct
+- Tokens expire after 1 hour; the server automatically refreshes them
+- If using xAuth, ensure username/password are correct
+
+#### Rate Limiting
+
+- The server implements rate limiting (10 requests/second)
+- If you hit Instapaper's API limits, wait a few minutes
+
+#### Connection Issues
+
+- Ensure the MCP client can access the server executable
+- Use absolute paths in configuration
+- Check that the server is running: `dotnet Instapaper.Mcp.Server.dll --help`
+
+### Logs
+
+The server logs to stderr. To view logs:
+
+```bash
+# When running directly
+dotnet run --verbosity diagnostic
+
+# When running in Docker
+docker logs instapaper-mcp
+
+# When running via docker-compose
+docker-compose logs -f instapaper-mcp
+```
+
+### Error Codes
+
+| Code | Description | Resolution |
+|------|-------------|------------|
+| 1100 | Invalid OAuth Request | Check ConsumerKey/Secret |
+| 1102 | Invalid Access Token | Re-authenticate |
+| 1240 | Bookmark Not Found | Verify bookmark ID |
+| 1241 | Folder Not Found | Verify folder ID |
+| 1250 | Already in Folder | No action needed |
+| 1251 | Invalid Folder | Create folder first |
+
+For more details, see [docs/OAUTH_MIGRATION.md](docs/OAUTH_MIGRATION.md).
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests: `dotnet test`
+5. Submit a pull request
+
+### Development Requirements
+
+- .NET 10 SDK
+- Git
+- Docker (optional, for containerized development)
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Acknowledgments
+
+- [Instapaper API](https://www.instapaper.com/api)
+- [Model Context Protocol](https://modelcontextprotocol.io/)
+- [Polly](https://www.pollydocs.org/) - Resilience and transient fault handling
