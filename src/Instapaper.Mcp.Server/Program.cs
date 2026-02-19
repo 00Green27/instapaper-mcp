@@ -1,4 +1,8 @@
-﻿using Instapaper.Mcp.Server;
+﻿using System.Reflection;
+
+using Instapaper.Mcp.Server;
+
+using Microsoft.Extensions.Configuration;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -44,5 +48,10 @@ builder.Services
     .WithTools<InstapaperBookmarkTools>()
     .WithTools<InstapaperFolderTools>()
     .WithResources<InstapaperResources>();
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets(Assembly.GetExecutingAssembly(), true);
+}
 
 await builder.Build().RunAsync();
