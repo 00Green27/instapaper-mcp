@@ -190,18 +190,3 @@ docker-compose up -d
 | 401 Unauthorized   | Verify credentials; tokens refresh automatically    |
 | Rate limiting      | Instapaper API limits requests — wait a few minutes |
 | Bookmark not found | Check bookmark ID (use `list_bookmarks`)            |
-
----
-
-## Development
-
-```bash
-# Build
-dotnet build
-
-# Test
-dotnet test
-
-# Publish
-dotnet publish src/Instapaper.Mcp.Server -c Release -o ./publish
-```
