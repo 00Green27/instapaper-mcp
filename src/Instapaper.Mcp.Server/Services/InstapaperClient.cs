@@ -417,7 +417,6 @@ public sealed class InstapaperClient : IInstapaperClient
                 _logger.LogDebug("Received a 401 error, clearing the token cache and trying again");
                 await ClearTokenCacheAsync(ct);
 
-                // Повторяем запрос с новыми токенами
                 request.Dispose();
                 using var retryRequest = new HttpRequestMessage(method, path);
                 retryRequest.RequestUri = new Uri(_httpClient.BaseAddress!, request.RequestUri!);
