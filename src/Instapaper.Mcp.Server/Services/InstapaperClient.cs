@@ -130,7 +130,7 @@ public sealed class InstapaperClient : IInstapaperClient
         if (content != null)
             parameters["content"] = content;
         if (tags?.Any() == true)
-            parameters["tags"] = JsonSerializer.Serialize(tags.Select(tag => new { Name = tag }));
+            parameters["tags"] = JsonSerializer.Serialize(tags.Select(tag => new { name = tag }));
         parameters["resolve_final_url"] = resolveFinalUrl ? "1" : "0";
         parameters["archived"] = archiveOnAdd ? "1" : "0";
 
@@ -394,7 +394,24 @@ public sealed class InstapaperClient : IInstapaperClient
         {
             _logger.LogWarning("API error: {StatusCode} {ReasonPhrase}", response.StatusCode, response.ReasonPhrase);
 
-            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _logger.LogWarning("Rate limit exceeded. Consider reducing request frequency");
+                var rateLimitErrorStream = await response.Content.ReadAsStreamAsync(ct);
+                var rateLimitError = JsonSerializer.Deserialize(rateLimitErrorStream, InstapaperJsonContext.Default.Error);
+                throw InstapaperApiException.FromResponse(response, rateLimitError);
+            }
+
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable ||
+                response.StatusCode == HttpStatusCode.GatewayTimeout)
+            {
+                _logger.LogWarning("Service temporarily unavailable: {StatusCode}", response.StatusCode);
+                var serviceErrorStream = await response.Content.ReadAsStreamAsync(ct);
+                var serviceError = JsonSerializer.Deserialize(serviceErrorStream, InstapaperJsonContext.Default.Error);
+                throw InstapaperApiException.FromResponse(response, serviceError);
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 _logger.LogDebug("Received a 401 error, clearing the token cache and trying again");
                 await ClearTokenCacheAsync(ct);
@@ -487,27 +504,21 @@ public sealed class InstapaperClient : IInstapaperClient
 
     private async Task EnsureAuthenticatedAsync(CancellationToken ct)
     {
-        if (_tokenExpiry.HasValue && _tokenExpiry.Value > _timeProvider.GetUtcNow()
-            && !string.IsNullOrEmpty(_cachedToken))
-        {
-            return;
-        }
-
-        if (!string.IsNullOrEmpty(_options.AccessToken) && !string.IsNullOrEmpty(_options.AccessTokenSecret))
-        {
-            _cachedToken = _options.AccessToken;
-            _cachedTokenSecret = _options.AccessTokenSecret;
-            _tokenExpiry = _timeProvider.GetUtcNow() + TokenTtl;
-            _logger.LogDebug("A pre-configured access token is used");
-            return;
-        }
-
         await _lock.WaitAsync(ct);
         try
         {
             if (_tokenExpiry.HasValue && _tokenExpiry.Value > _timeProvider.GetUtcNow()
                 && !string.IsNullOrEmpty(_cachedToken))
             {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(_options.AccessToken) && !string.IsNullOrEmpty(_options.AccessTokenSecret))
+            {
+                _cachedToken = _options.AccessToken;
+                _cachedTokenSecret = _options.AccessTokenSecret;
+                _tokenExpiry = _timeProvider.GetUtcNow() + TokenTtl;
+                _logger.LogDebug("A pre-configured access token is used");
                 return;
             }
 
