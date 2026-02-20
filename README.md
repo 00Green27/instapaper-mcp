@@ -205,9 +205,3 @@ dotnet test
 # Publish
 dotnet publish src/Instapaper.Mcp.Server -c Release -o ./publish
 ```
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE)
