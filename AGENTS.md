@@ -94,7 +94,7 @@ Use standard .NET CLI commands for building the project. Ensure you have the cor
 
 (1) Restore and build the project: `dotnet restore` then `dotnet build`.
 (2) If there are errors, fix them and rebuild.
-(3) To run tests for a specific project: `dotnet test tests/InstapaperMcp.Tests/InstapaperMcp.Tests.csproj --no-build`
+(3) To run tests for a specific project: `dotnet test tests/Instapaper.Mcp.Server.Tests/Instapaper.Mcp.Server.Tests.csproj --no-build`
 (4) To run specific tests, use filters: `dotnet test --filter "FullyQualifiedName~TestNamespace.TestClass.TestMethod"`
 
 **Important**: In automation, use appropriate filters to exclude flaky or long-running tests.
@@ -120,7 +120,7 @@ Use standard .NET CLI commands for building the project. Ensure you have the cor
 - **`.editorconfig`**: Code formatting rules, null annotations, diagnostic configurations
 - **`Directory.Build.props`**: Shared MSBuild properties across all projects
 - **`Directory.Packages.props`**: Centralized package version management
-- **`InstapaperMcp.slnx`**: Main solution file
+- **`Instapaper.Mcp.slnx`**: Main solution file
 
 ### Dependencies and Hidden Requirements
 

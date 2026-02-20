@@ -8,6 +8,6 @@
     <Project Path="src/Instapaper.Mcp.Server/Instapaper.Mcp.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/InstapaperMcp.Tests/InstapaperMcp.Tests.csproj" />
+    <Project Path="tests/Instapaper.Mcp.Server.Tests/Instapaper.Mcp.Server.Tests.csproj" />
   </Folder>
 </Solution>

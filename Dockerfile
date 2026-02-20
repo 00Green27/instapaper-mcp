@@ -7,14 +7,14 @@ COPY *.slnx ./
 COPY Directory.Build.props ./
 COPY Directory.Packages.props ./
 COPY src/Instapaper.Mcp.Server/Instapaper.Mcp.Server.csproj ./src/Instapaper.Mcp.Server/
-COPY tests/InstapaperMcp.Tests/InstapaperMcp.Tests.csproj ./tests/InstapaperMcp.Tests/
+COPY tests/Instapaper.Mcp.Server.Tests/Instapaper.Mcp.Server.Tests.csproj ./tests/Instapaper.Mcp.Server.Tests/
 
 # Restore dependencies
 RUN dotnet restore
 
 # Copy source code
 COPY src/Instapaper.Mcp.Server/ ./src/Instapaper.Mcp.Server/
-COPY tests/InstapaperMcp.Tests/ ./tests/InstapaperMcp.Tests/
+COPY tests/Instapaper.Mcp.Server.Tests/ ./tests/Instapaper.Mcp.Server.Tests/
 
 # Build and publish
 WORKDIR /src/src/Instapaper.Mcp.Server
