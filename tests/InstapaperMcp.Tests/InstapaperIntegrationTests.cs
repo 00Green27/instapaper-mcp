@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Instapaper.Mcp.Server.Tests;
 
@@ -36,7 +36,8 @@ public class InstapaperIntegrationTests
 
         var http = new HttpClient { BaseAddress = new Uri("https://www.instapaper.com/api/1/") };
         var logger = LoggerFactory.Create(_ => { }).CreateLogger<InstapaperClient>();
-        return new InstapaperClient(http, new OAuth1SignatureGenerator(TimeProvider.System), options, logger);
+        var timeProvider = TimeProvider.System;
+        return new InstapaperClient(http, new OAuth1SignatureGenerator(timeProvider), options, logger, timeProvider);
     }
 
     [Fact]

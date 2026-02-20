@@ -1,6 +1,10 @@
+using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+
 using Instapaper.Mcp.Server.Configuration;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -9,25 +13,30 @@ namespace Instapaper.Mcp.Server;
 public sealed class InstapaperClient : IInstapaperClient
 {
     private const int DefaultLimit = 100;
+    private static readonly TimeSpan TokenTtl = TimeSpan.FromHours(1);
 
     private readonly InstapaperOptions _options;
     private readonly HttpClient _httpClient;
     private readonly IOAuth1SignatureGenerator _signatureGenerator;
     private readonly ILogger<InstapaperClient> _logger;
+    private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private static string? _cachedToken;
-    private static string? _cachedTokenSecret;
+    private string? _cachedToken;
+    private string? _cachedTokenSecret;
+    private DateTimeOffset? _tokenExpiry;
 
     public InstapaperClient(
         HttpClient httpClient,
         IOAuth1SignatureGenerator signatureGenerator,
         IOptions<InstapaperOptions> options,
-        ILogger<InstapaperClient> logger)
+        ILogger<InstapaperClient> logger,
+        TimeProvider timeProvider)
     {
         _httpClient = httpClient;
         _signatureGenerator = signatureGenerator;
         _options = options.Value;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     public async Task<IReadOnlyCollection<Bookmark>> ListBookmarksAsync(
@@ -36,8 +45,8 @@ public sealed class InstapaperClient : IInstapaperClient
         int? limit,
         CancellationToken ct = default)
     {
-        const int MaxApiLimit = 500;
-        const int MaxPages = 10;
+        var maxApiLimit = _options.MaxApiLimit > 0 ? _options.MaxApiLimit : 500;
+        var maxPages = _options.MaxPages > 0 ? _options.MaxPages : 10;
 
         var parameters = new Dictionary<string, string>();
         if (!string.IsNullOrEmpty(folderId))
@@ -48,13 +57,13 @@ public sealed class InstapaperClient : IInstapaperClient
         if (!limit.HasValue || limit <= 0)
             limit = DefaultLimit;
 
-        int effectiveLimit = Math.Min(limit.Value, MaxApiLimit * MaxPages);
+        int effectiveLimit = Math.Min(limit.Value, maxApiLimit * maxPages);
 
         var results = new List<Bookmark>();
-        var seenIds = new List<string>();
-        for (int page = 0; page < MaxPages; page++)
+        var seenIds = new HashSet<long>();
+        for (int page = 0; page < maxPages; page++)
         {
-            parameters["limit"] = MaxApiLimit.ToString();
+            parameters["limit"] = maxApiLimit.ToString();
 
             if (seenIds.Count > 0)
             {
@@ -72,7 +81,10 @@ public sealed class InstapaperClient : IInstapaperClient
 
             if (newBookmarks.Length == 0) break;
 
-            seenIds.AddRange(newBookmarks.Select(b => b.BookmarkId.ToString()));
+            foreach (var bookmark in newBookmarks)
+            {
+                seenIds.Add(bookmark.BookmarkId);
+            }
 
             var candidates = lowerQuery is not null
                 ? newBookmarks.Where(b =>
@@ -98,6 +110,11 @@ public sealed class InstapaperClient : IInstapaperClient
         List<string>? tags = null,
         CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(url) && string.IsNullOrWhiteSpace(content))
+        {
+            throw new ArgumentException("The URL or content must be specified", nameof(url));
+        }
+
         var parameters = new Dictionary<string, string>();
         if (url != null)
             parameters["url"] = url;
@@ -106,7 +123,11 @@ public sealed class InstapaperClient : IInstapaperClient
         if (description != null)
             parameters["description"] = description;
         if (folderId.HasValue)
+        {
+            if (folderId.Value <= 0)
+                throw new ArgumentOutOfRangeException(nameof(folderId), "FolderId must be a positive number");
             parameters["folder_id"] = folderId.Value.ToString();
+        }
         if (content != null)
             parameters["content"] = content;
         if (tags?.Any() == true)
@@ -125,11 +146,15 @@ public sealed class InstapaperClient : IInstapaperClient
             parameters,
             ct);
 
-        return items.OfType<Bookmark>().First();
+        var bookmark = items.OfType<Bookmark>().FirstOrDefault();
+        return bookmark ?? throw InstapaperApiException.Create("Failed to create a bookmark: The API did not return the expected response");
     }
 
     public async Task<string> GetBookmarkContentAsync(long bookmarkId, CancellationToken ct = default)
     {
+        if (bookmarkId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(bookmarkId), "The BookmarkId must be a positive number");
+
         var parameters = new Dictionary<string, string>
         {
             ["bookmark_id"] = bookmarkId.ToString()
@@ -144,13 +169,36 @@ public sealed class InstapaperClient : IInstapaperClient
 
     public async Task<IReadOnlyDictionary<long, string>> GetBookmarkContentsAsync(IEnumerable<long> bookmarkIds, CancellationToken ct = default)
     {
-        var tasks = bookmarkIds.Select(async id => (id, content: await GetBookmarkContentAsync(id, ct)));
-        var results = await Task.WhenAll(tasks);
-        return new Dictionary<long, string>(results.ToDictionary(x => x.id, x => x.content));
+        if (bookmarkIds == null)
+            throw new ArgumentNullException(nameof(bookmarkIds));
+
+        var bookmarkIdsArray = bookmarkIds.ToArray();
+        var results = new ConcurrentDictionary<long, string>();
+
+        using var semaphore = new SemaphoreSlim(5);
+        var tasks = bookmarkIdsArray.Select(async id =>
+        {
+            await semaphore.WaitAsync(ct);
+            try
+            {
+                var content = await GetBookmarkContentAsync(id, ct);
+                results[id] = content;
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        return results;
     }
 
     public async Task<Bookmark> ManageBookmarksAsync(long bookmarkId, BookmarkAction action, CancellationToken ct = default)
     {
+        if (bookmarkId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(bookmarkId), "The BookmarkId must be a positive number");
+
         string path = action switch
         {
             BookmarkAction.Archive => "bookmarks/archive",
@@ -168,17 +216,44 @@ public sealed class InstapaperClient : IInstapaperClient
 
         var items = await SendAsync<List<InstapaperItem>>(HttpMethod.Post, path, parameters, ct);
 
-        return items.OfType<Bookmark>().First();
+        var bookmark = items.OfType<Bookmark>().FirstOrDefault();
+        return bookmark ?? throw InstapaperApiException.Create($"Failed to perform {action} on the bookmark: The API did not return the expected response");
     }
 
     public async Task<IReadOnlyCollection<Bookmark>> ManageBookmarksAsync(IEnumerable<long> bookmarkIds, BookmarkAction action, CancellationToken ct = default)
     {
-        var tasks = bookmarkIds.Select(async id => await ManageBookmarksAsync(id, action, ct));
-        return await Task.WhenAll(tasks);
+        if (bookmarkIds == null)
+            throw new ArgumentNullException(nameof(bookmarkIds));
+
+        var bookmarkIdsArray = bookmarkIds.ToArray();
+        var results = new ConcurrentBag<Bookmark>();
+
+        using var semaphore = new SemaphoreSlim(5);
+        var tasks = bookmarkIdsArray.Select(async id =>
+        {
+            await semaphore.WaitAsync(ct);
+            try
+            {
+                var bookmark = await ManageBookmarksAsync(id, action, ct);
+                results.Add(bookmark);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        return results.ToArray();
     }
 
     public async Task<Bookmark> MoveBookmarkAsync(long bookmarkId, long folderId, CancellationToken ct = default)
     {
+        if (bookmarkId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(bookmarkId), "The BookmarkId must be a positive number");
+        if (folderId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(folderId), "FolderId must be a positive number");
+
         var parameters = new Dictionary<string, string>
         {
             ["bookmark_id"] = bookmarkId.ToString(),
@@ -191,13 +266,37 @@ public sealed class InstapaperClient : IInstapaperClient
              parameters,
              ct);
 
-        return items.OfType<Bookmark>().First() with { FolderId = folderId };
+        var bookmark = items.OfType<Bookmark>().FirstOrDefault();
+        return bookmark != null
+            ? bookmark with { FolderId = folderId }
+            : throw InstapaperApiException.Create("Couldn't move bookmark: API didn't return expected response");
     }
 
     public async Task<IReadOnlyCollection<Bookmark>> MoveBookmarksAsync(IEnumerable<long> bookmarkIds, long folderId, CancellationToken ct = default)
     {
-        var tasks = bookmarkIds.Select(async id => await MoveBookmarkAsync(id, folderId, ct));
-        return await Task.WhenAll(tasks);
+        if (bookmarkIds == null)
+            throw new ArgumentNullException(nameof(bookmarkIds));
+
+        var bookmarkIdsArray = bookmarkIds.ToArray();
+        var results = new ConcurrentBag<Bookmark>();
+
+        using var semaphore = new SemaphoreSlim(5);
+        var tasks = bookmarkIdsArray.Select(async id =>
+        {
+            await semaphore.WaitAsync(ct);
+            try
+            {
+                var bookmark = await MoveBookmarkAsync(id, folderId, ct);
+                results.Add(bookmark);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        return results.ToArray();
     }
 
     public async Task<IReadOnlyCollection<Folder>> ListFoldersAsync(CancellationToken ct = default)
@@ -223,6 +322,9 @@ public sealed class InstapaperClient : IInstapaperClient
 
     public async Task<Folder> CreateFolderAsync(string title, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(title))
+            throw new ArgumentException("The folder name cannot be empty", nameof(title));
+
         var parameters = new Dictionary<string, string>
         {
             ["title"] = title
@@ -234,11 +336,15 @@ public sealed class InstapaperClient : IInstapaperClient
             parameters,
             ct);
 
-        return items.OfType<Folder>().First();
+        var folder = items.OfType<Folder>().FirstOrDefault();
+        return folder ?? throw InstapaperApiException.Create("Couldn't create folder: API didn't return expected response");
     }
 
     public async Task<bool> DeleteFolderAsync(long folderId, CancellationToken ct = default)
     {
+        if (folderId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(folderId), "FolderId must be a positive number");
+
         var parameters = new Dictionary<string, string>
         {
             ["folder_id"] = folderId.ToString()
@@ -271,6 +377,8 @@ public sealed class InstapaperClient : IInstapaperClient
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, Dictionary<string, string>? parameters, CancellationToken ct)
     {
+        _logger.LogDebug("Request: {Method} {Path}", method, path);
+
         using var request = new HttpRequestMessage(method, path);
         request.RequestUri = new Uri(_httpClient.BaseAddress!, request.RequestUri!);
 
@@ -285,10 +393,69 @@ public sealed class InstapaperClient : IInstapaperClient
 
         if (!response.IsSuccessStatusCode)
         {
+            _logger.LogWarning("API error: {StatusCode} {ReasonPhrase}", response.StatusCode, response.ReasonPhrase);
+
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _logger.LogWarning("Rate limit exceeded. Consider reducing request frequency");
+                var rateLimitErrorStream = await response.Content.ReadAsStreamAsync(ct);
+                var rateLimitError = JsonSerializer.Deserialize(rateLimitErrorStream, InstapaperJsonContext.Default.Error);
+                throw InstapaperApiException.FromResponse(response, rateLimitError);
+            }
+
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable ||
+                response.StatusCode == HttpStatusCode.GatewayTimeout)
+            {
+                _logger.LogWarning("Service temporarily unavailable: {StatusCode}", response.StatusCode);
+                var serviceErrorStream = await response.Content.ReadAsStreamAsync(ct);
+                var serviceError = JsonSerializer.Deserialize(serviceErrorStream, InstapaperJsonContext.Default.Error);
+                throw InstapaperApiException.FromResponse(response, serviceError);
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _logger.LogDebug("Received a 401 error, clearing the token cache and trying again");
+                await ClearTokenCacheAsync(ct);
+
+                request.Dispose();
+                using var retryRequest = new HttpRequestMessage(method, path);
+                retryRequest.RequestUri = new Uri(_httpClient.BaseAddress!, request.RequestUri!);
+
+                if (parameters is not null)
+                {
+                    retryRequest.Content = new FormUrlEncodedContent(parameters);
+                }
+
+                await SignAsync(retryRequest, parameters, ct);
+
+                using var retryResponse = await _httpClient.SendAsync(retryRequest, ct);
+
+                if (!retryResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Repeated API error: {StatusCode} {ReasonPhrase}", retryResponse.StatusCode, retryResponse.ReasonPhrase);
+                    var retryErrorStream = await retryResponse.Content.ReadAsStreamAsync(ct);
+                    var retryError = JsonSerializer.Deserialize(retryErrorStream, InstapaperJsonContext.Default.Error);
+                    throw InstapaperApiException.FromResponse(retryResponse, retryError);
+                }
+
+                _logger.LogDebug("Successful response after re-authentication: {StatusCode}", retryResponse.StatusCode);
+
+                if (typeof(T) == typeof(string))
+                {
+                    return (T)(object)await retryResponse.Content.ReadAsStringAsync(ct);
+                }
+
+                var retryStream = await retryResponse.Content.ReadAsStreamAsync(ct);
+                T? retryResult = (T?)JsonSerializer.Deserialize(retryStream, typeof(List<InstapaperItem>), InstapaperJsonContext.Default);
+                return retryResult ?? throw new InvalidOperationException($"Empty response deserializing {typeof(T).Name}");
+            }
+
             var errorStream = await response.Content.ReadAsStreamAsync(ct);
             var error = JsonSerializer.Deserialize(errorStream, InstapaperJsonContext.Default.Error);
             throw InstapaperApiException.FromResponse(response, error);
         }
+
+        _logger.LogDebug("Successful response: {StatusCode}", response.StatusCode);
 
         if (typeof(T) == typeof(string))
         {
@@ -298,6 +465,22 @@ public sealed class InstapaperClient : IInstapaperClient
         var stream = await response.Content.ReadAsStreamAsync(ct);
         T? result = (T?)JsonSerializer.Deserialize(stream, typeof(List<InstapaperItem>), InstapaperJsonContext.Default);
         return result ?? throw new InvalidOperationException($"Empty response deserializing {typeof(T).Name}");
+    }
+
+    private async Task ClearTokenCacheAsync(CancellationToken ct)
+    {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            _cachedToken = null;
+            _cachedTokenSecret = null;
+            _tokenExpiry = null;
+            _logger.LogDebug("The token cache has been cleared");
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     private async Task SignAsync(HttpRequestMessage request, Dictionary<string, string>? parameters,
@@ -315,16 +498,29 @@ public sealed class InstapaperClient : IInstapaperClient
             parameters);
 
         request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", header[6..]);
+
+        _logger.LogTrace("Added the OAuth authorization header");
     }
 
     private async Task EnsureAuthenticatedAsync(CancellationToken ct)
     {
-        if (!string.IsNullOrEmpty(_cachedToken ?? _options.AccessToken)) return;
-
         await _lock.WaitAsync(ct);
         try
         {
-            if (!string.IsNullOrEmpty(_cachedToken)) return;
+            if (_tokenExpiry.HasValue && _tokenExpiry.Value > _timeProvider.GetUtcNow()
+                && !string.IsNullOrEmpty(_cachedToken))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(_options.AccessToken) && !string.IsNullOrEmpty(_options.AccessTokenSecret))
+            {
+                _cachedToken = _options.AccessToken;
+                _cachedTokenSecret = _options.AccessTokenSecret;
+                _tokenExpiry = _timeProvider.GetUtcNow() + TokenTtl;
+                _logger.LogDebug("A pre-configured access token is used");
+                return;
+            }
 
             var parameters = new Dictionary<string, string>
             {
@@ -350,6 +546,7 @@ public sealed class InstapaperClient : IInstapaperClient
 
             request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", authHeader[6..]);
 
+            _logger.LogDebug("Requesting a new access token via xAuth");
             var response = await _httpClient.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
 
@@ -360,6 +557,9 @@ public sealed class InstapaperClient : IInstapaperClient
 
             _cachedToken = Uri.UnescapeDataString(parts["oauth_token"]);
             _cachedTokenSecret = Uri.UnescapeDataString(parts["oauth_token_secret"]);
+            _tokenExpiry = _timeProvider.GetUtcNow() + TokenTtl;
+
+            _logger.LogDebug("Access token successfully received, lifetime: {Expiry}", _tokenExpiry.Value);
         }
         finally
         {

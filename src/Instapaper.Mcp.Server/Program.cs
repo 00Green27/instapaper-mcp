@@ -1,13 +1,22 @@
 ﻿using System.Reflection;
+
 using Instapaper.Mcp.Server;
+
 using Microsoft.Extensions.Configuration;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+
 using ModelContextProtocol.Protocol;
 
 var builder = Host.CreateApplicationBuilder(args);
-builder.Logging.AddConsole(consoleLogOptions => { consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace; });
+
+builder.Logging.AddConsole(consoleLogOptions =>
+{
+    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Information;
+});
+
 builder.Services
     .AddInstapaper(builder.Configuration)
     .AddMcpServer(options =>
@@ -36,9 +45,13 @@ builder.Services
         };
     })
     .WithStdioServerTransport()
-    .WithToolsFromAssembly()
-    .WithResourcesFromAssembly();
+    .WithTools<InstapaperBookmarkTools>()
+    .WithTools<InstapaperFolderTools>()
+    .WithResources<InstapaperResources>();
 
-builder.Configuration.AddUserSecrets(Assembly.GetExecutingAssembly(), true);
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets(Assembly.GetExecutingAssembly(), true);
+}
 
 await builder.Build().RunAsync();

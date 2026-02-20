@@ -19,7 +19,8 @@ public sealed class InstapaperApiException : Exception
 
     private InstapaperApiException(
         string message,
-        HttpStatusCode statusCode, InstapaperErrorCode errorCode)
+        HttpStatusCode statusCode,
+        InstapaperErrorCode errorCode)
         : base(message)
     {
         StatusCode = statusCode;
@@ -36,6 +37,21 @@ public sealed class InstapaperApiException : Exception
     {
         return new InstapaperApiException(
             $"Instapaper API error ({(int)response.StatusCode}): {error?.Message ?? "Something went wrong."}",
-            response.StatusCode, error?.ErrorCode ?? InstapaperErrorCode.Unknown);
+            response.StatusCode,
+            error?.ErrorCode ?? InstapaperErrorCode.Unknown);
+    }
+
+    /// <summary>
+    /// Creates an InstapaperApiException for client-side errors (e.g., validation, parsing).
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="customCode">Optional custom error code.</param>
+    /// <returns>A new InstapaperApiException instance.</returns>
+    public static InstapaperApiException Create(string message)
+    {
+        return new InstapaperApiException(
+            message,
+            HttpStatusCode.BadRequest,
+            InstapaperErrorCode.Unknown);
     }
 }
