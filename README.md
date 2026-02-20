@@ -226,7 +226,7 @@ Add the following to your configuration file (e.g., `claude_desktop_config.json`
       "args": [
         "run",
         "--project",
-        "D:/Dev/Instapaper.Mcp.Server",
+        "D:/McpServers/Instapaper.Mcp.Server",
         "--no-build",
         "-v",
         "quiet"
