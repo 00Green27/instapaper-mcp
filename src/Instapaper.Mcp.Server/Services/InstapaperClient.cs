@@ -110,7 +110,7 @@ public sealed class InstapaperClient : IInstapaperClient
         if (content != null)
             parameters["content"] = content;
         if (tags?.Any() == true)
-            parameters["tags"] = JsonSerializer.Serialize(tags.Select(tag => new { Name = tag }));
+            parameters["tags"] = JsonSerializer.Serialize(tags.Select(tag => new { name = tag }));
         parameters["resolve_final_url"] = resolveFinalUrl ? "1" : "0";
         parameters["archived"] = archiveOnAdd ? "1" : "0";
 
