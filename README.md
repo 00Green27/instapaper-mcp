@@ -156,11 +156,16 @@ Resources provide read-only access to Instapaper data:
 
 ## Docker
 
-### Build Image
+### Build Image (.NET SDK Container Support)
+
+This project uses .NET SDK Container Support for simplified container builds.
 
 ```bash
-docker build -t instapaper-mcp:latest .
+# Build and publish container image
+dotnet publish /t:PublishContainer -c Release
 ```
+
+This creates the `00green27/instapaper-mcp-server:latest` image (Alpine-based) for linux-x64.
 
 ### Run Container
 
@@ -171,7 +176,7 @@ docker run -d \
   -e Instapaper__ConsumerSecret="your_secret" \
   -e Instapaper__Username="your_email" \
   -e Instapaper__Password="your_password" \
-  instapaper-mcp:latest
+  00green27/instapaper-mcp-server:latest
 ```
 
 ### Docker Compose

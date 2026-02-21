@@ -3,6 +3,10 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <UserSecretsId>instapaper-mcp-server-5a3b-4c91</UserSecretsId>
+    <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
+    <ContainerFamily>alpine</ContainerFamily>
+    <ContainerRepository>00green27/instapaper-mcp-server</ContainerRepository>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
