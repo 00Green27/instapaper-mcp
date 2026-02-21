@@ -1,9 +1,9 @@
 services:
   instapaper-mcp:
-    build: .
+    image: 00green27/instapaper-mcp-server:latest
     container_name: instapaper-mcp-server
     restart: unless-stopped
-    
+
     # Configure environment variables
     environment:
       - Instapaper__ConsumerKey=${INSTAPAPER_CONSUMER_KEY:-}
@@ -12,14 +12,7 @@ services:
       - Instapaper__AccessTokenSecret=${INSTAPAPER_ACCESS_TOKEN_SECRET:-}
       - Instapaper__MaxApiLimit=500
       - Instapaper__MaxPages=10
-    
-    # Or use Docker secrets (more secure)
-    secrets:
-      - instapaper_consumer_key
-      - instapaper_consumer_secret
-      - instapaper_access_token
-      - instapaper_access_token_secret
-    
+
     # Health check
     healthcheck:
       test: ["CMD", "dotnet", "Instapaper.Mcp.Server.dll", "--help"]
@@ -27,21 +20,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    
+
     # Logging
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-
-# Docker secrets (for swarm mode)
-secrets:
-  instapaper_consumer_key:
-    external: true
-  instapaper_consumer_secret:
-    external: true
-  instapaper_access_token:
-    external: true
-  instapaper_access_token_secret:
-    external: true
